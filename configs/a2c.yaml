@@ -38,6 +38,6 @@ eval_env:
 
 train:
   total_timesteps: 10000000
-  checkpoint_freq: 500000
+  checkpoint_freq: 1000000
   eval_freq: 1000000
   n_eval_episodes: 2

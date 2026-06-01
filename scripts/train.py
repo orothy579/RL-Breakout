@@ -69,6 +69,11 @@ def main() -> None:
     run_dir = args.experiments_root / f"{timestamp}_{name}_seed{args.seed}"
     run_dir.mkdir(parents=True, exist_ok=True)
 
+    train_cfg = cfg.setdefault("train", {})
+    total_timesteps = int(
+        args.total_timesteps or train_cfg.get("total_timesteps", 2_000_000)
+    )
+    train_cfg["total_timesteps"] = total_timesteps
     save_config(cfg, run_dir / "config.yaml")
 
     tb_dir = run_dir / "tensorboard"
@@ -79,8 +84,6 @@ def main() -> None:
     for d in (tb_dir, ckpt_dir, monitor_dir, eval_dir, best_model_dir):
         d.mkdir(parents=True, exist_ok=True)
 
-    train_cfg = cfg.get("train", {})
-    total_timesteps = int(args.total_timesteps or train_cfg.get("total_timesteps", 2_000_000))
     checkpoint_freq = int(train_cfg.get("checkpoint_freq", 200_000))
     eval_freq = int(train_cfg.get("eval_freq", 50_000))
     n_eval_episodes = int(train_cfg.get("n_eval_episodes", 5))

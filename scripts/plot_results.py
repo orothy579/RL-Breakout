@@ -82,17 +82,16 @@ def _read_run(run_dir: Path) -> dict[str, Any] | None:
     summary_files: list[Path] = []
     if (run_dir / "eval_runs").exists():
         for seed_dir in sorted((run_dir / "eval_runs").glob("seed*/")):
-            named = sorted(
-                p for p in seed_dir.glob("summary*.json") if p.name != "summary.json"
-            )
-            if named:
-                summary_files.extend(named)
-            elif (seed_dir / "summary.json").exists():
-                summary_files.append(seed_dir / "summary.json")
+            canonical = seed_dir / "summary.json"
+            if canonical.exists():
+                summary_files.append(canonical)
+            else:
+                summary_files.extend(sorted(seed_dir.glob("summary_*.json")))
 
     summaries = [json.loads(p.read_text(encoding="utf-8")) for p in summary_files]
 
     algo_name = cfg.get("algo", {}).get("name", "?")
+    train_cfg = cfg.get("train", {}) or {}
     return {
         "run_dir": run_dir,
         "name": run_dir.name,
@@ -100,6 +99,7 @@ def _read_run(run_dir: Path) -> dict[str, Any] | None:
         "features": cfg.get("algo", {}).get("features", {}) or {},
         "seed": _extract_seed(run_dir.name),
         "variant": _extract_config_variant(run_dir.name, algo_name),
+        "total_timesteps": int(train_cfg.get("total_timesteps", 0)),
         "timesteps": timesteps,
         "ep_rew_mean": results_mean,
         "ep_rew_std": results_std,
@@ -162,6 +162,62 @@ def _group_label(run: dict[str, Any]) -> str:
     if variant and variant != "baseline":
         return f"{algo}[{variant}]"
     return algo
+
+
+def _format_timesteps(n: int) -> str:
+    if n >= 1_000_000:
+        val = n / 1_000_000
+        return f"{val:g}M" if val == int(val) else f"{val:.1f}M"
+    if n >= 1_000:
+        val = n / 1_000
+        return f"{val:g}k" if val == int(val) else f"{val:.1f}k"
+    return str(n)
+
+
+def _run_training_seed(run: dict[str, Any], raw: dict[str, Any] | None = None) -> int | str:
+    if run.get("seed") is not None:
+        return run["seed"]
+    meta = (raw or {}).get("meta", {}) or {}
+    training_seed = meta.get("training_seed")
+    if training_seed is not None and str(training_seed) != "unknown":
+        try:
+            return int(training_seed)
+        except ValueError:
+            return str(training_seed)
+    return "?"
+
+
+def _run_total_timesteps(run: dict[str, Any], raw: dict[str, Any] | None = None) -> int:
+    meta = (raw or {}).get("meta", {}) or {}
+    if meta.get("total_timesteps") is not None:
+        return int(meta["total_timesteps"])
+    return int(run.get("total_timesteps") or 0)
+
+
+def _eval_box_label(run: dict[str, Any], raw: dict[str, Any]) -> str:
+    algo = _group_label(run)
+    seed = _run_training_seed(run, raw)
+    steps = _run_total_timesteps(run, raw)
+    steps_str = _format_timesteps(steps) if steps > 0 else "?"
+    seed_line = f"seed={seed}"
+    if len(run["summaries"]) > 1:
+        eval_seed = (raw.get("meta", {}) or {}).get("eval_seed", "?")
+        seed_line = f"seed={seed} (eval={eval_seed})"
+    return f"{algo}\n{seed_line}\n{steps_str} steps"
+
+
+def _eval_box_sort_key(item: tuple[dict[str, Any], dict[str, Any]]) -> tuple:
+    run, raw = item
+    seed = _run_training_seed(run, raw)
+    seed_key: int | str
+    if isinstance(seed, int):
+        seed_key = seed
+    else:
+        try:
+            seed_key = int(seed)
+        except ValueError:
+            seed_key = str(seed)
+    return (_group_label(run), _run_total_timesteps(run, raw), seed_key)
 
 
 def _collect_runs(paths: list[Path]) -> list[dict[str, Any]]:
@@ -254,95 +310,85 @@ def plot_learning_curves(runs: list[dict[str, Any]], out_path: Path) -> None:
 
 def plot_eval_distribution(runs: list[dict[str, Any]], out_path: Path) -> None:
     """``summary.json`` 의 에피소드 통계(mean/std/median/min/max/ci95)를 시각화."""
-    grouped: dict[str, list[dict[str, float | int]]] = {}
+    raw_entries: list[tuple[dict[str, Any], dict[str, Any]]] = []
     for r in runs:
-        if not r["summaries"]:
-            continue
-        label = _group_label(r)
         for raw in r["summaries"]:
-            try:
-                stats = _parse_eval_summary(raw)
-            except KeyError as exc:
-                print(f"[plot] skip summary in {r['name']}: {exc}")
-                continue
-            grouped.setdefault(label, []).append(stats)
+            raw_entries.append((r, raw))
 
-    if not grouped:
+    entries: list[tuple[str, dict[str, float | int]]] = []
+    for run, raw in sorted(raw_entries, key=_eval_box_sort_key):
+        try:
+            stats = _parse_eval_summary(raw)
+        except KeyError as exc:
+            print(f"[plot] skip summary in {run['name']}: {exc}")
+            continue
+        entries.append((_eval_box_label(run, raw), stats))
+
+    if not entries:
         print("[plot] eval_runs/*/summary*.json 이 없으면 분포 plot 을 건너뜁니다.")
         return
 
-    labels = sorted(grouped.keys())
+    labels = [label for label, _ in entries]
     x_centers = np.arange(len(labels), dtype=float)
     bar_half = 0.14
 
-    fig, ax = plt.subplots(figsize=(max(8, len(labels) * 1.6), 5.5))
+    fig, ax = plt.subplots(figsize=(max(10, len(labels) * 2.4), 6))
 
-    for i, label in enumerate(labels):
-        stats_list = grouped[label]
-        n = len(stats_list)
-        if n == 1:
-            xs = [float(x_centers[i])]
-        else:
-            spread = min(0.35, 0.18 * n)
-            xs = np.linspace(
-                x_centers[i] - spread / 2, x_centers[i] + spread / 2, n
-            ).tolist()
-
-        for xi, stats in zip(xs, stats_list, strict=True):
-            xi = float(xi)
-            # min–max (episode rewards)
-            ax.vlines(
-                xi,
-                stats["min"],
-                stats["max"],
-                colors="#333333",
-                linewidth=1.8,
-                zorder=2,
+    for xi, (_, stats) in zip(x_centers, entries, strict=True):
+        xi = float(xi)
+        # min–max (episode rewards)
+        ax.vlines(
+            xi,
+            stats["min"],
+            stats["max"],
+            colors="#333333",
+            linewidth=1.8,
+            zorder=2,
+        )
+        # 95% bootstrap CI of mean (from evaluate.py)
+        ax.add_patch(
+            Rectangle(
+                (xi - bar_half, stats["ci95_low"]),
+                2 * bar_half,
+                stats["ci95_high"] - stats["ci95_low"],
+                facecolor="#A8D4F0",
+                edgecolor="#1F77B4",
+                linewidth=1,
+                alpha=0.55,
+                zorder=3,
             )
-            # 95% bootstrap CI of mean (from evaluate.py)
-            ax.add_patch(
-                Rectangle(
-                    (xi - bar_half, stats["ci95_low"]),
-                    2 * bar_half,
-                    stats["ci95_high"] - stats["ci95_low"],
-                    facecolor="#A8D4F0",
-                    edgecolor="#1F77B4",
-                    linewidth=1,
-                    alpha=0.55,
-                    zorder=3,
-                )
-            )
-            # ±1 std around mean (episode reward spread)
-            ax.errorbar(
-                xi,
-                stats["mean"],
-                yerr=stats["std"],
-                fmt="none",
-                ecolor="#666666",
-                elinewidth=1.2,
-                capsize=4,
-                capthick=1.2,
-                zorder=4,
-            )
-            # median
-            ax.hlines(
-                stats["median"],
-                xi - bar_half * 1.1,
-                xi + bar_half * 1.1,
-                colors="#FF7F0E",
-                linewidth=2.5,
-                zorder=5,
-            )
-            # mean
-            ax.scatter(
-                [xi],
-                [stats["mean"]],
-                marker="^",
-                s=72,
-                c="#2CA02C",
-                edgecolors="#2CA02C",
-                zorder=6,
-            )
+        )
+        # ±1 std around mean (episode reward spread)
+        ax.errorbar(
+            xi,
+            stats["mean"],
+            yerr=stats["std"],
+            fmt="none",
+            ecolor="#666666",
+            elinewidth=1.2,
+            capsize=4,
+            capthick=1.2,
+            zorder=4,
+        )
+        # median
+        ax.hlines(
+            stats["median"],
+            xi - bar_half * 1.1,
+            xi + bar_half * 1.1,
+            colors="#FF7F0E",
+            linewidth=2.5,
+            zorder=5,
+        )
+        # mean
+        ax.scatter(
+            [xi],
+            [stats["mean"]],
+            marker="^",
+            s=72,
+            c="#2CA02C",
+            edgecolors="#2CA02C",
+            zorder=6,
+        )
 
     legend_handles = [
         Rectangle(
@@ -366,18 +412,27 @@ def plot_eval_distribution(runs: list[dict[str, Any]], out_path: Path) -> None:
             label="Green triangle: mean",
         ),
     ]
-    ax.legend(handles=legend_handles, loc="upper right", fontsize=8, framealpha=0.95)
+    ax.legend(
+        handles=legend_handles,
+        loc="upper center",
+        bbox_to_anchor=(0.5, -0.12),
+        ncol=2,
+        fontsize=7,
+        frameon=True,
+        framealpha=0.9,
+    )
 
     ax.set_xticks(x_centers)
-    ax.set_xticklabels(labels)
+    ax.set_xticklabels(labels, fontsize=8, ha="center")
     ax.set_ylabel("Episode reward")
     ax.set_title(
-        "Final-policy evaluation — episode statistics (from summary.json, n eval episodes)"
+        "Evaluation (100 episodes)"
     )
     ax.grid(True, axis="y", alpha=0.3)
     fig.tight_layout()
+    fig.subplots_adjust(bottom=0.30)
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(out_path, dpi=150)
+    fig.savefig(out_path, dpi=150, bbox_inches="tight")
     plt.close(fig)
     print(f"[plot] saved {out_path}")
 

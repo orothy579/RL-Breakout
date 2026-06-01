@@ -18,6 +18,9 @@ from src.eval import evaluate_model, format_summary
 from src.utils.config import load_config
 from src.utils.logging import write_episode_csv
 
+SUMMARY_JSON = "summary.json"
+EPISODES_CSV = "episodes.csv"
+
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Evaluate a trained agent on ALE/Breakout-v5.")
@@ -65,11 +68,57 @@ def _training_seed(run_dir: Path | None) -> int | str:
     return "unknown"
 
 
-def _eval_artifact_stem(cfg: dict, *, run_dir: Path | None) -> str:
-    algo = _algo_slug(cfg)
-    seed = _training_seed(run_dir)
-    timesteps = int(cfg.get("train", {}).get("total_timesteps", 0))
-    return f"summary_{algo}_seed{seed}_{timesteps}"
+def _eval_meta(
+    cfg: dict,
+    *,
+    run_dir: Path | None,
+    model_path: Path,
+    eval_seed: int,
+    n_eval_episodes: int,
+    deterministic: bool,
+) -> dict:
+    return {
+        "algo": _algo_slug(cfg),
+        "training_seed": str(_training_seed(run_dir)),
+        "total_timesteps": int(cfg.get("train", {}).get("total_timesteps", 0)),
+        "eval_seed": eval_seed,
+        "n_eval_episodes": n_eval_episodes,
+        "deterministic": deterministic,
+        "model_path": str(model_path),
+    }
+
+
+def _save_eval_artifacts(
+    out_dir: Path,
+    summary,
+    cfg: dict,
+    *,
+    run_dir: Path | None,
+    model_path: Path,
+    eval_seed: int,
+    n_eval_episodes: int,
+    deterministic: bool,
+) -> tuple[Path, Path]:
+    json_path = out_dir / SUMMARY_JSON
+    csv_path = out_dir / EPISODES_CSV
+    meta = _eval_meta(
+        cfg,
+        run_dir=run_dir,
+        model_path=model_path,
+        eval_seed=eval_seed,
+        n_eval_episodes=n_eval_episodes,
+        deterministic=deterministic,
+    )
+    payload = summary.to_dict(drop_lists=True)
+    payload["meta"] = meta
+    json_path.write_text(json.dumps(payload, indent=2, ensure_ascii=False))
+    write_episode_csv(
+        csv_path,
+        rewards=summary.rewards,
+        lengths=summary.lengths,
+        meta={k: str(v) for k, v in meta.items()},
+    )
+    return json_path, csv_path
 
 
 def _resolve_run_artifacts(
@@ -135,32 +184,15 @@ def evaluate_run(
 
     print(format_summary(summary, name=cfg["algo"]["name"]))
 
-    stem = _eval_artifact_stem(cfg, run_dir=run_dir)
-    json_path = out_dir / f"{stem}.json"
-    csv_path = out_dir / f"{stem.replace('summary_', 'episodes_', 1)}.csv"
-    payload = summary.to_dict(drop_lists=True)
-    payload["meta"] = {
-        "algo": _algo_slug(cfg),
-        "training_seed": str(_training_seed(run_dir)),
-        "total_timesteps": int(cfg.get("train", {}).get("total_timesteps", 0)),
-        "eval_seed": eval_seed,
-        "n_eval_episodes": n_eval_episodes,
-        "deterministic": deterministic,
-        "model_path": str(model_path),
-    }
-    json_path.write_text(json.dumps(payload, indent=2, ensure_ascii=False))
-    write_episode_csv(
-        csv_path,
-        rewards=summary.rewards,
-        lengths=summary.lengths,
-        meta={
-            "algo": _algo_slug(cfg),
-            "training_seed": str(_training_seed(run_dir)),
-            "total_timesteps": str(cfg.get("train", {}).get("total_timesteps", "")),
-            "eval_seed": str(eval_seed),
-            "deterministic": str(deterministic),
-            "model_path": str(model_path),
-        },
+    json_path, csv_path = _save_eval_artifacts(
+        out_dir,
+        summary,
+        cfg,
+        run_dir=run_dir,
+        model_path=model_path,
+        eval_seed=eval_seed,
+        n_eval_episodes=n_eval_episodes,
+        deterministic=deterministic,
     )
     print(f"[eval] saved  = {json_path}")
     print(f"[eval] saved  = {csv_path}")
@@ -197,34 +229,15 @@ def main() -> None:
     print(format_summary(summary, name=cfg["algo"]["name"]))
 
     if out_dir is not None:
-        stem = _eval_artifact_stem(cfg, run_dir=run_dir)
-        json_path = out_dir / f"{stem}.json"
-        csv_path = out_dir / f"{stem.replace('summary_', 'episodes_', 1)}.csv"
-        payload = summary.to_dict(drop_lists=True)
-        payload["meta"] = {
-            "algo": _algo_slug(cfg),
-            "training_seed": str(_training_seed(run_dir)),
-            "total_timesteps": int(cfg.get("train", {}).get("total_timesteps", 0)),
-            "eval_seed": args.seed,
-            "n_eval_episodes": args.n_eval_episodes,
-            "deterministic": args.deterministic,
-            "model_path": str(model_path),
-        }
-        json_path.write_text(
-            json.dumps(payload, indent=2, ensure_ascii=False)
-        )
-        write_episode_csv(
-            csv_path,
-            rewards=summary.rewards,
-            lengths=summary.lengths,
-            meta={
-                "algo": _algo_slug(cfg),
-                "training_seed": str(_training_seed(run_dir)),
-                "total_timesteps": str(cfg.get("train", {}).get("total_timesteps", "")),
-                "eval_seed": str(args.seed),
-                "deterministic": str(args.deterministic),
-                "model_path": str(model_path),
-            },
+        json_path, csv_path = _save_eval_artifacts(
+            out_dir,
+            summary,
+            cfg,
+            run_dir=run_dir,
+            model_path=model_path,
+            eval_seed=args.seed,
+            n_eval_episodes=args.n_eval_episodes,
+            deterministic=args.deterministic,
         )
         print(f"[eval] saved  = {json_path}")
         print(f"[eval] saved  = {csv_path}")

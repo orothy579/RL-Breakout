@@ -1,0 +1,9 @@
+# A2C axis D — advantage normalization.
+# 효과: normalize_advantage false → true → 미니배치마다 advantage 를 평균0/분산1 로 표준화.
+#       gradient scale 이 안정되어 학습률 민감도↓, 보통 수렴 안정성↑.
+# 근거: PPO 는 advantage 정규화를 기본 사용. 단순 A2C 대비 그 효과를 분리해 측정한다.
+inherits: ../a2c.yaml
+
+algo:
+  kwargs:
+    normalize_advantage: true

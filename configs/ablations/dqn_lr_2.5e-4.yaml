@@ -1,0 +1,9 @@
+# DQN axis C — learning rate (큰 학습률).
+# 효과: 1e-4 → 2.5e-4 로 보폭↑ → 초반 학습 빠름, 단 Q 값 과대추정/발산 위험↑.
+# 근거: Mnih et al. 2015 의 RMSProp 학습률이 2.5e-4. SB3 기본 DQN 은 1e-4(보수적).
+#       두 표준값 사이의 trade-off(속도 vs 안정성)를 측정한다.
+inherits: ../dqn_baseline.yaml
+
+algo:
+  kwargs:
+    learning_rate: 2.5e-4

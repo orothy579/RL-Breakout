@@ -1,0 +1,10 @@
+# DQN axis D — exploration schedule (탐험 구간 연장).
+# 효과: ε 를 전체 학습의 10% → 20% 동안 1.0→0.01 로 선형 감쇠.
+#       초기 무작위 탐험을 더 오래 유지 → 다양한 상태 수집, 조기 수렴 방지.
+#       대신 greedy 활용 구간이 줄어 학습 후반 점수 상승이 늦어질 수 있음.
+# 근거: 탐험 스케줄은 Atari DQN 의 대표적 민감 하이퍼파라미터.
+inherits: ../dqn_baseline.yaml
+
+algo:
+  kwargs:
+    exploration_fraction: 0.2

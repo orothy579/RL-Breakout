@@ -1,42 +1,9 @@
-# PPO (Schulman et al., 2017) — on-policy 비교군.
-# DQN과 동일한 baseline 전처리·시드·평가 프로토콜을 유지하면서 정책 기반과 비교한다.
+# PPO axis F — learning rate (낮춤).
+# 효과: 2.5e-4 → 1.0e-4 로 보폭↓ → 업데이트 안정성↑, 수렴 속도↓.
+# 근거: clip_range 는 baseline(0.1) 유지 → 학습률 단일 변수만 비교.
+# 주의: YAML 은 `1.0e-4` 처럼 소수점을 넣어야 float 로 파싱됨 (`1e-4` 는 문자열로 읽혀 SB3 가 거부).
+inherits: ../ppo.yaml
 
 algo:
-  name: ppo
-  features: {}
   kwargs:
-    policy: CnnPolicy
-    learning_rate: 1e-4
-    n_steps: 128                         # n_envs * n_steps = 8 * 128 = 1024 step / update
-    batch_size: 256
-    n_epochs: 4
-    gamma: 0.99
-    gae_lambda: 0.95
-    clip_range: 1.0
-    ent_coef: 0.01
-    vf_coef: 0.5
-    max_grad_norm: 0.5
-
-env:
-  env_id: ALE/Breakout-v5
-  n_envs: 8
-  frame_stack: 4
-  env_kwargs:
-    frameskip: 1
-    repeat_action_probability: 0.0
-    full_action_space: false
-  wrapper_kwargs:
-    terminal_on_life_loss: true
-    clip_reward: true
-
-eval_env:
-  n_envs: 1
-  wrapper_kwargs:
-    terminal_on_life_loss: false
-    clip_reward: false
-
-train:
-  total_timesteps: 2000000
-  checkpoint_freq: 500000
-  eval_freq: 1000000
-  n_eval_episodes: 2
+    learning_rate: 1.0e-4

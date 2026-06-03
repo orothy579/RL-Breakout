@@ -1,0 +1,11 @@
+# A2C axis C — optimizer (RMSProp → Adam).
+# 효과: use_rms_prop=false 이면 SB3 가 Adam 으로 전환. (rms_prop_eps 는 무시됨)
+#       학습률은 7e-4 로 고정 → "옵티마이저" 단일 변수만 바꿔 비교.
+#       주의: RMSProp 표준값 7e-4 는 Adam 에는 다소 클 수 있어 불안정해질 가능성이 있으며,
+#       바로 그 민감도(=옵티마이저 선택의 영향)를 측정하는 것이 목적.
+# 근거: Mnih et al. 2016 (A3C) 은 RMSProp 사용. 현대 구현은 Adam 이 흔함 → 둘을 직접 대조.
+inherits: ../a2c.yaml
+
+algo:
+  kwargs:
+    use_rms_prop: false

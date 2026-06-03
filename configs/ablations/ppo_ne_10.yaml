@@ -1,42 +1,9 @@
-# PPO (Schulman et al., 2017) — on-policy 비교군.
-# DQN과 동일한 baseline 전처리·시드·평가 프로토콜을 유지하면서 정책 기반과 비교한다.
+# PPO axis E — number of epochs per update.
+# 효과: n_epochs 4 → 10 → 같은 rollout 을 더 여러 번 재사용 → sample efficiency↑,
+#       단 정책이 수집 분포에서 멀어져(off-policy) clip 이 자주 걸리고 과적합 위험↑.
+# 근거: n_epochs 는 PPO 의 데이터 재사용 강도를 정하는 표준 축. baseline 4 의 위쪽을 본다.
+inherits: ../ppo.yaml
 
 algo:
-  name: ppo
-  features: {}
   kwargs:
-    policy: CnnPolicy
-    learning_rate: 2.5e-4
-    n_steps: 128                         # n_envs * n_steps = 8 * 128 = 1024 step / update
-    batch_size: 256
     n_epochs: 10
-    gamma: 0.99
-    gae_lambda: 0.95
-    clip_range: 0.1
-    ent_coef: 0.01
-    vf_coef: 0.5
-    max_grad_norm: 0.5
-
-env:
-  env_id: ALE/Breakout-v5
-  n_envs: 8
-  frame_stack: 4
-  env_kwargs:
-    frameskip: 1
-    repeat_action_probability: 0.0
-    full_action_space: false
-  wrapper_kwargs:
-    terminal_on_life_loss: true
-    clip_reward: true
-
-eval_env:
-  n_envs: 1
-  wrapper_kwargs:
-    terminal_on_life_loss: false
-    clip_reward: false
-
-train:
-  total_timesteps: 10000000
-  checkpoint_freq: 500000
-  eval_freq: 1000000
-  n_eval_episodes: 2

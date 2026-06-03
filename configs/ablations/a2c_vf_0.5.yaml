@@ -1,0 +1,9 @@
+# A2C axis E — value function coefficient.
+# 효과: vf_coef 0.25 → 0.50 → 총 손실에서 value 회귀 비중↑.
+#       value head 가 빠르게 학습돼 advantage 추정 정확도↑ 가능, 단 정책 학습 신호는 상대적으로 약화.
+# 근거: baseline A2C 는 0.25(Atari 권장), PPO 는 0.5. 두 계열의 vf_coef 를 맞춰 영향만 분리한다.
+inherits: ../a2c.yaml
+
+algo:
+  kwargs:
+    vf_coef: 0.5

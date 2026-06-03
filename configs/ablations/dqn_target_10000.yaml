@@ -1,0 +1,10 @@
+# DQN axis B — target network update interval (느린 타깃).
+# 효과: target net 을 1k → 10k step 마다 갱신 → bootstrap 타깃이 더 안정적(느린 변화).
+#       수렴은 느려질 수 있으나 value 발산/oscillation 위험↓.
+# 근거: Mnih et al. 2015 (Nature) 는 10,000 frame 마다 target 갱신. SB3 Atari 기본값도 10k.
+#       baseline 의 1,000 은 의도적으로 공격적인 설정이므로 표준값과 직접 대비한다.
+inherits: ../dqn_baseline.yaml
+
+algo:
+  kwargs:
+    target_update_interval: 10000

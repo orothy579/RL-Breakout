@@ -1,42 +1,9 @@
-# PPO (Schulman et al., 2017) — on-policy 비교군.
-# DQN과 동일한 baseline 전처리·시드·평가 프로토콜을 유지하면서 정책 기반과 비교한다.
+# PPO axis C — entropy coefficient (높임).
+# 효과: ent_coef 0.01 → 0.05 → 탐험 보너스↑ → 정책이 더 오래 stochastic 유지.
+#       조기 수렴 방지에 도움이 되나 과도하면 점수 상승이 느려질 수 있음.
+# 근거: ppo_ent_0.0 / baseline(0.01) 와 함께 ent_coef 스윕(0.0·0.01·0.05)을 구성한다.
+inherits: ../ppo.yaml
 
 algo:
-  name: ppo
-  features: {}
   kwargs:
-    policy: CnnPolicy
-    learning_rate: 2.5e-4
-    n_steps: 128                         # n_envs * n_steps = 8 * 128 = 1024 step / update
-    batch_size: 256
-    n_epochs: 4
-    gamma: 0.99
-    gae_lambda: 0.95
-    clip_range: 0.1
     ent_coef: 0.05
-    vf_coef: 0.5
-    max_grad_norm: 0.5
-
-env:
-  env_id: ALE/Breakout-v5
-  n_envs: 8
-  frame_stack: 4
-  env_kwargs:
-    frameskip: 1
-    repeat_action_probability: 0.0
-    full_action_space: false
-  wrapper_kwargs:
-    terminal_on_life_loss: true
-    clip_reward: true
-
-eval_env:
-  n_envs: 1
-  wrapper_kwargs:
-    terminal_on_life_loss: false
-    clip_reward: false
-
-train:
-  total_timesteps: 10000000
-  checkpoint_freq: 500000
-  eval_freq: 1000000
-  n_eval_episodes: 2

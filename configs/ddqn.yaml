@@ -1,5 +1,8 @@
 # Double DQN (van Hasselt et al., AAAI 2016)
-# 변경 포인트: target 계산 시 next action은 online net argmax, 값은 target net 으로 평가.
+# Single-variable change vs. baseline: the bootstrap target decouples action
+# SELECTION (online net argmax) from action EVALUATION (target net), which
+# reduces DQN's Q-value over-estimation. Implemented in src/algos/dqn.py
+# (DoubleDQN.train). All other hyper-parameters are inherited unchanged.
 inherits: dqn_baseline.yaml
 
 algo:

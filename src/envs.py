@@ -1,15 +1,33 @@
-"""Breakout v5 환경 factory.
+"""Breakout v5 environment factory.
 
-모든 알고리즘이 **동일한 baseline 환경**을 공유하도록 한 곳에서 정의한다.
-Installation Manual §1.2 / Guide §B.4 의 가이드라인을 그대로 적용:
+================================ ATTRIBUTION ================================
+External library: Stable-Baselines3 (SB3). We rely on SB3's
+``make_atari_env`` (which applies the standard DeepMind ``AtariWrapper``
+stack) plus the vectorised wrappers ``VecFrameStack`` / ``VecTransposeImage``.
+
+MY ORIGINAL CONTRIBUTION: defining the environment ONCE here so every
+algorithm (DQN/DDQN/Dueling/A2C/PPO) trains and is evaluated on a byte-for-byte
+identical pipeline — this is what makes the cross-algorithm comparison fair.
+The non-trivial design choice is the *deliberate train/eval mismatch*:
+
+  * Training env  : terminal_on_life_loss=True, clip_reward=True
+        -> denser learning signal (each life is an episode; rewards in
+           {-1,0,+1}) — the DeepMind 2015 training protocol.
+  * Eval / play   : terminal_on_life_loss=False, clip_reward=False
+        -> measures the TRUE game score over a full 5-life episode, which is
+           the number we actually report.
+
+Baseline preprocessing fixed by the assignment manual (§1.2 / Guide §B.4):
 
     env_kwargs = {
-        "frameskip": 1,
-        "repeat_action_probability": 0.0,
+        "frameskip": 1,                      # AtariWrapper does its own skip
+        "repeat_action_probability": 0.0,    # no sticky actions in baseline
         "full_action_space": False,
     }
-    AtariWrapper (NoopReset/MaxAndSkip(4)/EpisodicLife/FireReset/WarpFrame/ClipReward)
-    + VecFrameStack(n_stack=4)
+    AtariWrapper = NoopReset + MaxAndSkip(4) + EpisodicLife + FireReset
+                   + WarpFrame(84x84 gray) + ClipReward
+    + VecFrameStack(n_stack=4)               # 4 frames -> motion/velocity cues
+============================================================================
 """
 
 from __future__ import annotations
@@ -32,11 +50,13 @@ ENV_ID_DEFAULT = "ALE/Breakout-v5"
 
 
 def _ensure_registered() -> None:
+    # ale-py >= 0.11 no longer auto-registers; do it explicitly so
+    # ``gym.make("ALE/Breakout-v5")`` works regardless of import order.
     gym.register_envs(ale_py)
 
 
 def _coerce_env_kwargs(env_kwargs: dict[str, Any]) -> dict[str, Any]:
-    """YAML 에서 들어온 dict 의 타입 보정 (bool/숫자)."""
+    """Normalise types coming from YAML (string 'true'/'false' -> bool)."""
     out: dict[str, Any] = {}
     for k, v in env_kwargs.items():
         if isinstance(v, str) and v.lower() in {"true", "false"}:
@@ -52,19 +72,21 @@ def build_train_env(
     seed: int,
     monitor_dir: str | Path | None = None,
 ) -> VecEnv:
-    """학습용 VecEnv 구성."""
+    """Build the vectorised TRAINING env (n_envs parallel Atari games)."""
     _ensure_registered()
 
     env_id = env_cfg.get("env_id", ENV_ID_DEFAULT)
-    n_envs = int(env_cfg.get("n_envs", 8))
+    n_envs = int(env_cfg.get("n_envs", 8))          # 8 parallel envs (config default)
     frame_stack = int(env_cfg.get("frame_stack", 4))
     env_kwargs = _coerce_env_kwargs(env_cfg.get("env_kwargs", {}))
     wrapper_kwargs = dict(env_cfg.get("wrapper_kwargs", {}))
 
     monitor_dir_str = str(monitor_dir) if monitor_dir is not None else None
     if monitor_dir_str is not None:
+        # Monitor CSVs capture raw episode returns/lengths for later plotting.
         Path(monitor_dir_str).mkdir(parents=True, exist_ok=True)
 
+    # make_atari_env applies the full DeepMind AtariWrapper stack to each env.
     venv = make_atari_env(
         env_id,
         n_envs=n_envs,
@@ -74,6 +96,8 @@ def build_train_env(
         wrapper_kwargs=wrapper_kwargs or None,
     )
     if frame_stack and frame_stack > 1:
+        # Stack the last 4 frames so the agent can perceive ball velocity
+        # (a single 84x84 frame is not enough to infer motion direction).
         venv = VecFrameStack(venv, n_stack=frame_stack)
     return venv
 
@@ -84,7 +108,7 @@ def build_eval_env(
     *,
     seed: int,
 ) -> VecEnv:
-    """평가용 VecEnv."""
+    """Build the EVALUATION env (true full-episode score, no reward clipping)."""
     _ensure_registered()
 
     env_id = env_cfg.get("env_id", ENV_ID_DEFAULT)
@@ -92,10 +116,12 @@ def build_eval_env(
     frame_stack = int(env_cfg.get("frame_stack", 4))
     env_kwargs = _coerce_env_kwargs(env_cfg.get("env_kwargs", {}))
 
+    # Start from the training wrappers, then force the eval-specific overrides
+    # so the reported score reflects the real game, not the training proxy.
     eval_wrapper = dict(env_cfg.get("wrapper_kwargs", {}))
     eval_wrapper.update(eval_env_cfg.get("wrapper_kwargs", {}))
-    eval_wrapper.setdefault("terminal_on_life_loss", False)
-    eval_wrapper.setdefault("clip_reward", False)
+    eval_wrapper.setdefault("terminal_on_life_loss", False)  # full 5-life episode
+    eval_wrapper.setdefault("clip_reward", False)            # real (unclipped) score
 
     venv: VecEnv = make_atari_env(
         env_id,
@@ -106,6 +132,9 @@ def build_eval_env(
     )
     if frame_stack and frame_stack > 1:
         venv = VecFrameStack(venv, n_stack=frame_stack)
+    # VecTransposeImage: SB3's predict() expects channel-first images; the eval
+    # path is built manually here, so we add the transpose that the training
+    # path gets automatically.
     return VecTransposeImage(venv)
 
 
@@ -116,7 +145,7 @@ def build_play_env(
     seed: int,
     render_mode: str = "human",
 ) -> VecEnv:
-    """대화형 시청용 단일 env."""
+    """Build a single renderable env for interactive watching (scripts/play.py)."""
     _ensure_registered()
     from stable_baselines3.common.atari_wrappers import AtariWrapper
     from stable_baselines3.common.monitor import Monitor
@@ -125,11 +154,14 @@ def build_play_env(
     frame_stack = int(env_cfg.get("frame_stack", 4))
     env_kwargs = _coerce_env_kwargs(env_cfg.get("env_kwargs", {}))
 
+    # Same eval-style wrappers (no life-loss termination, no reward clipping).
     eval_wrapper = dict(env_cfg.get("wrapper_kwargs", {}))
     eval_wrapper.update(eval_env_cfg.get("wrapper_kwargs", {}))
     eval_wrapper.setdefault("terminal_on_life_loss", False)
     eval_wrapper.setdefault("clip_reward", False)
 
+    # Built by hand (not make_atari_env) because we need render_mode on the
+    # underlying gym env so a window can be shown.
     def _make() -> gym.Env:
         env = gym.make(env_id, render_mode=render_mode, **env_kwargs)
         env = Monitor(env)

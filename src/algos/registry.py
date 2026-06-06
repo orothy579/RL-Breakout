@@ -1,4 +1,13 @@
-"""알고리즘 이름 -> builder 매핑."""
+"""Algorithm-name -> builder mapping.
+
+MY ORIGINAL CONTRIBUTION: a tiny registry/dispatch layer so the training and
+evaluation scripts stay algorithm-agnostic. ``cfg["algo"]["name"]`` (a string
+from YAML) is the single switch that selects which builder runs; adding a new
+algorithm means adding one entry here, nothing else changes downstream.
+``load_model`` mirrors the same dispatch for reloading saved checkpoints,
+including the subtlety that our custom ``DoubleDQN`` must be reloaded with its
+own class (not SB3's ``DQN``) so the overridden ``train`` is preserved.
+"""
 
 from __future__ import annotations
 
@@ -14,7 +23,7 @@ from src.algos.ppo import build_ppo
 BuilderFn = Callable[..., BaseAlgorithm]
 
 REGISTRY: dict[str, BuilderFn] = {
-    "dqn": build_dqn,
+    "dqn": build_dqn,   # also covers Double / Dueling DQN via algo.features flags
     "ppo": build_ppo,
     "a2c": build_a2c,
 }
@@ -61,6 +70,10 @@ def load_model(
     if name == "a2c":
         return A2C.load(model_path, env=env, device=device)
     if name == "dqn":
+        # IMPORTANT: a Double-DQN checkpoint must be reloaded with our
+        # DoubleDQN subclass so the overridden Double-Q ``train`` survives a
+        # save/load round-trip (e.g. when resuming training). Dueling is
+        # carried by the saved policy weights, so no special-casing needed.
         cls = DoubleDQN if features.get("double_q", False) else DQN
         return cls.load(model_path, env=env, device=device)
     raise KeyError(f"Unknown algorithm '{name}'.")

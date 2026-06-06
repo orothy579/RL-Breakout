@@ -1,4 +1,12 @@
-"""YAML 설정 로더(상속 deep-merge 지원)."""
+"""YAML config loader with single-inheritance deep-merge.
+
+MY ORIGINAL CONTRIBUTION: a small config system that lets every experiment be
+expressed as a baseline file plus a tiny override. ``inherits: dqn_baseline.yaml``
+pulls in the parent and the child only re-states the keys it changes (recursively
+deep-merged). This is what keeps each ablation a true single-variable change and
+keeps the repo's dozens of configs DRY. Cyclic ``inherits`` chains are detected
+and rejected.
+"""
 
 from __future__ import annotations
 
@@ -10,6 +18,7 @@ import yaml
 
 
 def _deep_merge(parent: dict[str, Any], child: dict[str, Any]) -> dict[str, Any]:
+    """Recursively merge ``child`` onto ``parent`` (child wins on leaf keys)."""
     result = copy.deepcopy(parent)
     for key, value in child.items():
         if key in result and isinstance(result[key], dict) and isinstance(value, dict):

@@ -1,6 +1,8 @@
 # Dueling DQN (Wang et al., ICML 2016)
-# 변경 포인트: 공유 CNN 특징을 V(s) head 와 A(s,a) head 로 분기.
-# Q(s,a) = V(s) + (A(s,a) - mean_a A(s,a))
+# Single-variable change vs. baseline: split the shared CNN features into a
+# state-value head V(s) and an advantage head A(s,a), recombined as
+#   Q(s,a) = V(s) + (A(s,a) - mean_a A(s,a)).
+# Implemented in src/algos/dueling.py. All other hyper-parameters inherited.
 inherits: dqn_baseline.yaml
 
 algo:
@@ -8,5 +10,5 @@ algo:
     dueling: true
   kwargs:
     policy_kwargs:
-      # Dueling 분기 내부 hidden layer (Wang 2016 의 512 fc 를 따른 값)
+      # Hidden width of each dueling stream; 512 follows Wang et al. (2016).
       net_arch: [512]

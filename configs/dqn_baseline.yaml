@@ -1,51 +1,56 @@
-# Vanilla DQN (Mnih et al., 2015) — Breakout v5 baseline.
+# Vanilla DQN (Mnih et al., Nature 2015) — Breakout v5 baseline.
 #
-# 모든 ablation/대조군 YAML은 이 파일을 `inherits:` 로 끌어와서
-# 필요한 키만 덮어쓰면 됩니다.
+# Every ablation / control YAML pulls this file in via `inherits:` and only
+# overrides the key(s) it studies, so each comparison is single-variable.
+# Hyper-parameters follow the DeepMind 2015 Atari DQN recipe (as adapted by
+# Stable-Baselines3) unless noted otherwise.
 
 algo:
   name: dqn
   features:
-    double_q: false
-    dueling: false
+    double_q: false             # vanilla single-network target (baseline)
+    dueling: false              # single-stream Q-head (baseline)
   kwargs:
-    policy: CnnPolicy
-    learning_rate: 1.0e-4
-    buffer_size: 250000          # uint8 4x84x84 기준 약 7 GiB. RAM에 맞게 조정 가능.
-    learning_starts: 50000
-    batch_size: 32
-    train_freq: [4, step]
+    policy: CnnPolicy           # SB3 Nature-CNN over 4x84x84 stacked frames
+    learning_rate: 1.0e-4       # Adam LR; classic DQN value, stable for pixels
+    buffer_size: 250000         # ~7 GiB as uint8 4x84x84; capped to fit RAM
+                                # (paper uses 1M; shrunk for hardware budget)
+    learning_starts: 50000      # collect 50k random transitions before learning
+                                # so early updates aren't from a tiny buffer
+    batch_size: 32              # DeepMind 2015 minibatch size
+    train_freq: [4, step]       # one gradient step every 4 env steps (paper)
     gradient_steps: 1
-    target_update_interval: 1000
-    exploration_fraction: 0.1
-    exploration_initial_eps: 1.0
-    exploration_final_eps: 0.01
-    max_grad_norm: 10.0
-    gamma: 0.99
-    optimize_memory_usage: true
+    target_update_interval: 1000  # hard target-net sync period (stabilises TD target)
+    exploration_fraction: 0.1   # anneal epsilon over the first 10% of training
+    exploration_initial_eps: 1.0  # start fully random
+    exploration_final_eps: 0.01   # keep 1% exploration thereafter
+    max_grad_norm: 10.0         # gradient clipping for stability
+    gamma: 0.99                 # discount; standard for Atari horizons
+    optimize_memory_usage: true # store next_obs implicitly -> halves buffer RAM
     replay_buffer_kwargs:
-      handle_timeout_termination: false   # optimize_memory_usage=true 와 동시 사용 불가 제약
+      handle_timeout_termination: false  # required: SB3 forbids combining this
+                                         # with optimize_memory_usage=true
 
 env:
   env_id: ALE/Breakout-v5
-  n_envs: 8
-  frame_stack: 4
+  n_envs: 8                     # 8 parallel envs for throughput
+  frame_stack: 4               # 4 stacked frames -> ball velocity is observable
   env_kwargs:
-    frameskip: 1
-    repeat_action_probability: 0.0
+    frameskip: 1               # AtariWrapper applies its own MaxAndSkip(4)
+    repeat_action_probability: 0.0  # no sticky actions in the baseline
     full_action_space: false
   wrapper_kwargs:
-    terminal_on_life_loss: true          # 학습 시 신호 강화 (DeepMind 표준)
-    clip_reward: true
+    terminal_on_life_loss: true   # TRAIN: each life = episode -> denser signal (DeepMind)
+    clip_reward: true             # TRAIN: rewards in {-1,0,+1} -> stable TD targets
 
 eval_env:
   n_envs: 1
   wrapper_kwargs:
-    terminal_on_life_loss: false         # 평가 시 진짜 에피소드/스코어 사용
-    clip_reward: false
+    terminal_on_life_loss: false  # EVAL: full 5-life episode = real game
+    clip_reward: false            # EVAL: report the true (unclipped) score
 
 train:
-  total_timesteps: 10000000
+  total_timesteps: 10000000    # 10M-step budget, shared by ALL configs for fairness
   checkpoint_freq: 1000000
   eval_freq: 1000000
-  n_eval_episodes: 3
+  n_eval_episodes: 3           # quick in-training eval; final eval uses 100 episodes

@@ -1,12 +1,24 @@
 #!/usr/bin/env python3
-"""Breakout v5 — 학습 엔트리포인트.
+"""Breakout v5 — training entry point.
 
-사용 예:
+External library: Stable-Baselines3 provides ``model.learn`` plus the
+``EvalCallback`` / ``CheckpointCallback`` used here.
+
+MY ORIGINAL CONTRIBUTION: the experiment harness wrapped around SB3 —
+  * deterministic, timestamped, per-seed run directories with a frozen
+    config.yaml snapshot (reproducibility);
+  * EvalCallback on a SEPARATE eval env (seed offset +1000) that auto-saves
+    best_model by true-episode score, decoupled from the training proxy reward;
+  * resume-from-checkpoint logic (`--run`) and directory-batch sweeps
+    (`--config <dir>`) for running whole ablation suites in one command;
+  * optional post-training 100-episode evaluation.
+
+Usage:
     conda activate breakout
     python scripts/train.py --config configs/dqn_baseline.yaml --seed 0
     python scripts/train.py --config configs/ddqn.yaml --seed 1 --name ddqn
     python scripts/train.py --config configs/ppo.yaml --seed 0
-    python scripts/train.py --config configs/ablations_0603 --seed 7
+    python scripts/train.py --config configs/ablations --seed 7   # batch sweep
     python scripts/train.py --run experiments/2026-06-02_170457_dqn_baseline_seed7
 """
 
@@ -186,6 +198,8 @@ def _train_new(
     print(f"[train] target  = {total_timesteps:,} timesteps")
 
     train_env = build_train_env(env_cfg, seed=seed, monitor_dir=monitor_dir)
+    # Eval env uses a DIFFERENT seed (seed+1000) so "best model" is selected on
+    # episodes the agent didn't train on -> a cleaner generalization signal.
     eval_env = build_eval_env(env_cfg, eval_env_cfg, seed=seed + 1000)
 
     model = build_model(
@@ -196,11 +210,15 @@ def _train_new(
         device=args.device,
     )
 
+    # SB3 callbacks count *calls* (one per vec-env step), not env steps, so we
+    # divide the desired env-step frequency by n_envs to get the real period.
     periodic_cb = CheckpointCallback(
         save_freq=max(checkpoint_freq // n_envs, 1),
         save_path=str(ckpt_dir),
         name_prefix=algo_name,
     )
+    # EvalCallback periodically evaluates on the held-out eval_env and saves the
+    # best-scoring policy. deterministic=True -> greedy policy, reproducible score.
     eval_cb = EvalCallback(
         eval_env,
         best_model_save_path=str(best_model_dir),

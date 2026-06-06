@@ -1,8 +1,0 @@
-# DQN axis E — minibatch size.
-# 효과: 32 → 64 로 미니배치 확대 → gradient 추정 분산↓(업데이트 안정),
-#       업데이트당 연산량↑. 동일 gradient_steps 라면 sample 소비도 2배.
-# 근거: Mnih 2015 는 32 사용. 배치 크기는 안정성-throughput trade-off 의 표준 축.
-inherits: ../dqn_baseline.yaml
-
-env :
-  frame_stack: 6

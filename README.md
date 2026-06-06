@@ -1,10 +1,17 @@
-# Breakout v5 Reinforcement Learning Final Project
+# Breakout v5 Reinforcement Learning — Final Project
 
-ALE/Breakout-v5 환경에서 여러 강화학습 알고리즘을 학습·평가하고, 성능 차이를 이론적으로 해석하기 위한 프로젝트입니다. 과제의 핵심은 최고 점수 자체보다 **다양한 실험, 공정한 비교, 결과에 대한 강화학습 이론 기반 분석**입니다.
+Train and evaluate several reinforcement-learning algorithms on the
+`ALE/Breakout-v5` environment and interpret the performance differences through
+RL theory. Following the assignment brief, the goal is **not** the single
+highest score but **rigorous experimentation, fair comparison, and
+theory-grounded analysis**. Every use of an external library (Stable-Baselines3)
+is paired with explicit justification of the chosen library, architecture, and
+hyperparameters — both in this README and as in-code comments.
 
-## Project Constraints
+## Project Constraints (Mandatory Baseline)
 
-과제 공식 baseline 환경은 다음 패키지 버전을 고정합니다.
+For evaluation fairness, the assignment fixes the following package versions
+(see [docs/readme.md](docs/readme.md)):
 
 ```bash
 gymnasium[atari]==1.3.0
@@ -12,9 +19,32 @@ ale-py==0.11.2
 autorom[accept-rom-license]==0.6.1
 ```
 
-`docs/readme.md` 기준으로 필수 제약은 위 패키지 버전과 `ALE/Breakout-v5` 환경입니다. `batch_size`에 대한 고정 제약은 없습니다. 따라서 `batch_size`는 알고리즘별 표준 설정에 맞춰 다르게 둘 수 있습니다. 예를 들어 DQN의 `batch_size=32`는 replay buffer에서 샘플링하는 transition 수이고, PPO의 `batch_size=256`은 rollout batch를 나누는 minibatch 크기라 의미가 다릅니다.
+The only hard constraints are these versions and the `ALE/Breakout-v5`
+environment. There is **no fixed `batch_size` constraint**, so `batch_size` is
+set per algorithm convention: DQN's `batch_size=32` is the number of transitions
+sampled from the replay buffer, whereas PPO's `batch_size=256` is the minibatch
+size used to split a rollout — different meanings, different values.
 
-Stable-Baselines3 PyPI 2.8.0은 `gymnasium<1.3.0` 제약이 있으므로, 이 프로젝트는 `gymnasium==1.3.0`과 호환되는 SB3 master 버전을 GitHub에서 설치합니다.
+Stable-Baselines3 on PyPI (2.8.0) pins `gymnasium<1.3.0`, which conflicts with
+the required `gymnasium==1.3.0`. This project therefore installs SB3 from the
+GitHub `master` branch (cap relaxed to `gymnasium<2.0`); see
+[requirements.txt](requirements.txt).
+
+## Original Contributions vs. Stable-Baselines3
+
+The assignment explicitly penalizes "running an external library without
+original analysis." The library is used for the training scaffolding only; the
+RL-substantive pieces below are original and are documented inline in the code:
+
+| Contribution | Where | What was modified / added |
+|---|---|---|
+| **Double DQN target** (architectural modification) | [src/algos/dqn.py](src/algos/dqn.py) | Subclass `DoubleDQN` overrides SB3's `DQN.train`; only the next-Q target is changed to decouple action *selection* (online net) from *evaluation* (target net), reducing Q-value over-estimation (van Hasselt et al., 2016). |
+| **Dueling Q-head** (architectural modification) | [src/algos/dueling.py](src/algos/dueling.py) | Replaces SB3's single-stream Q-head with two streams `V(s)` and `A(s,a)`, recombined as `Q = V + (A − mean A)` over the shared Nature-CNN trunk (Wang et al., 2016). |
+| **Unified algorithm factory** | [src/algos/registry.py](src/algos/registry.py), [src/algos/dqn.py](src/algos/dqn.py) | One config-driven path produces vanilla/Double/Dueling/Double+Dueling DQN, so variants differ by *exactly one* component. |
+| **Shared env factory + deliberate train/eval mismatch** | [src/envs.py](src/envs.py) | Train uses `terminal_on_life_loss=True` + `clip_reward=True` (denser signal); eval uses the full 5-life episode with the **true unclipped score** — the number actually reported. |
+| **Single-variable config inheritance** | [src/utils/config.py](src/utils/config.py) | `inherits:` deep-merge so each ablation overrides one key — every comparison is a controlled experiment. |
+| **Bootstrap-CI evaluation** | [src/eval.py](src/eval.py) | Reports mean/std/median/min/max plus a non-parametric 95% bootstrap CI of the mean (Atari returns are skewed). |
+| **Experiment harness** | [scripts/](scripts/) | Reproducible per-seed run dirs with frozen config snapshots, resume-from-checkpoint, directory-batch ablation sweeps, leaderboard evaluation, and figure/table generation. |
 
 ## Repository Structure
 
@@ -22,44 +52,42 @@ Stable-Baselines3 PyPI 2.8.0은 `gymnasium<1.3.0` 제약이 있으므로, 이 �
 Breakout_Final_Project_Pack/
 ├── README.md
 ├── requirements.txt
-├── verify_env.ipynb
-├── verify_env.py
-├── docs/
-│   ├── readme.md
-│   └── requirements.txt
+├── verify_env.ipynb            # environment self-check (notebook)
+├── verify_env.py               # environment self-check (script)
 ├── configs/
-│   ├── dqn_baseline.yaml
-│   ├── ddqn.yaml
-│   ├── dueling_dqn.yaml
-│   ├── a2c.yaml
-│   ├── ppo.yaml
-│   └── ablations/
-│       ├── framestack_1.yaml
-│       ├── reward_clip_off.yaml
-│       └── sticky_action.yaml
+│   ├── dqn_baseline.yaml       # vanilla DQN baseline (all DQN ablations inherit this)
+│   ├── ddqn.yaml               # Double DQN  (inherits dqn_baseline)
+│   ├── dueling_dqn.yaml        # Dueling DQN (inherits dqn_baseline)
+│   ├── ppo.yaml                # PPO baseline
+│   ├── a2c.yaml                # A2C baseline
+│   └── ablations/              # 27 single-variable ablations (see its README.md)
+│       ├── README.md           # per-file knob + justification tables
+│       ├── dqn_*.yaml          # buffer / target / lr / batch / expl / frame-stack
+│       ├── ppo_*.yaml          # clip / ent / lr / n_epochs / gae / gamma
+│       └── a2c_*.yaml          # lr / n_steps / gae / optimizer / vf / norm-adv
 ├── src/
-│   ├── envs.py
-│   ├── eval.py
-│   ├── render.py
+│   ├── envs.py                 # env factory (train vs. eval preprocessing)
+│   ├── eval.py                 # evaluation metrics + bootstrap CI
+│   ├── render.py               # rendering helpers for play.py
 │   ├── algos/
-│   │   ├── registry.py
-│   │   ├── dqn.py
-│   │   ├── dueling.py
-│   │   ├── a2c.py
-│   │   └── ppo.py
+│   │   ├── registry.py         # name -> builder dispatch
+│   │   ├── dqn.py              # DQN + custom DoubleDQN
+│   │   ├── dueling.py          # custom Dueling Q-network/policy
+│   │   ├── a2c.py              # A2C builder (SB3 as-is)
+│   │   └── ppo.py              # PPO builder (SB3 as-is)
 │   └── utils/
-│       ├── config.py
-│       ├── logging.py
-│       └── seeding.py
+│       ├── config.py           # YAML loader with `inherits:` deep-merge
+│       ├── logging.py          # episode CSV writer
+│       └── seeding.py          # global seeding for reproducibility
 ├── scripts/
-│   ├── train.py
-│   ├── evaluate.py
-│   ├── play.py
-│   └── plot_results.py
-├── experiments/
+│   ├── train.py                # training entry point (+ resume / batch sweep)
+│   ├── evaluate.py             # single / multi-run evaluation + leaderboard
+│   ├── play.py                 # watch a trained agent
+│   └── plot_results.py         # aggregate runs -> figures & tables
+├── experiments/                # per-run outputs (gitignored)
 └── reports/
-    ├── figures/
-    └── tables/
+    ├── figures/                # learning curves, eval distributions
+    └── tables/                 # summary / comparison CSVs
 ```
 
 ## Environment Setup
@@ -71,166 +99,220 @@ pip install -r requirements.txt
 AutoROM --accept-license
 ```
 
-환경 확인:
+Install PyTorch separately to match your CUDA version (see the Installation
+Manual in [docs/](docs/)).
+
+Verify the installation:
 
 ```bash
 python verify_env.py
 ```
 
-또는 `verify_env.ipynb`를 열어 첫 번째 설치 셀과 검증 셀을 순서대로 실행합니다.
+or open [verify_env.ipynb](verify_env.ipynb) and run the install + verification
+cells in order. The check imports Gymnasium/ale-py, registers and creates
+`ALE/Breakout-v5`, and runs 100 random steps.
 
 ## Algorithms
 
-현재 실험 파이프라인은 다음 알고리즘을 지원합니다.
-
-| Algorithm | Config | Type | Main Purpose |
+| Algorithm | Config | Type | Purpose |
 |---|---|---|---|
-| DQN | `configs/dqn_baseline.yaml` | value-based, off-policy | Atari pixel control의 기본 baseline |
-| Double DQN | `configs/ddqn.yaml` | value-based, off-policy | DQN의 Q-value overestimation 완화 |
-| Dueling DQN | `configs/dueling_dqn.yaml` | value-based, off-policy | 상태 가치 `V(s)`와 advantage `A(s,a)` 분리 |
-| A2C | `configs/a2c.yaml` | actor-critic, on-policy | A3C의 synchronous 변형, 단순 정책 기반 비교군 |
-| PPO | `configs/ppo.yaml` | actor-critic, on-policy | clipped objective를 통한 안정적 policy optimization |
+| DQN | [configs/dqn_baseline.yaml](configs/dqn_baseline.yaml) | value-based, off-policy | Baseline for Atari pixel control |
+| Double DQN | [configs/ddqn.yaml](configs/ddqn.yaml) | value-based, off-policy | Mitigate DQN's Q-value over-estimation |
+| Dueling DQN | [configs/dueling_dqn.yaml](configs/dueling_dqn.yaml) | value-based, off-policy | Separate state value `V(s)` from advantage `A(s,a)` |
+| A2C | [configs/a2c.yaml](configs/a2c.yaml) | actor-critic, on-policy | Synchronous A3C variant; simplest policy-gradient control |
+| PPO | [configs/ppo.yaml](configs/ppo.yaml) | actor-critic, on-policy | Stable policy optimization via a clipped objective |
+
+All five share an identical preprocessing pipeline, seeding, 10M-step budget,
+and evaluation protocol, so differences are attributable to the algorithm.
+
+## Configuration System
+
+Configs use single-inheritance deep-merge. A child file pulls in a parent via
+`inherits:` and overrides only the keys it changes:
+
+```yaml
+# configs/ddqn.yaml
+inherits: dqn_baseline.yaml
+algo:
+  features:
+    double_q: true   # the only change vs. the baseline
+```
+
+The `configs/ablations/` folder contains **27 single-variable ablations** of the
+DQN/PPO/A2C baselines. Every value is anchored to a published standard or a
+deliberate ×0.5/×2 bracket; the per-file knob and rationale are tabulated in
+[configs/ablations/README.md](configs/ablations/README.md).
+
+> **YAML gotcha:** write scientific notation with a decimal point (`1.0e-4`, not
+> `1e-4`). PyYAML parses `1e-4` as a *string*, which SB3 then rejects.
 
 ## Training
 
-단일 학습:
+Single run:
 
 ```bash
 python scripts/train.py --config configs/dqn_baseline.yaml --seed 7
-python scripts/train.py --config configs/ddqn.yaml --seed 7
-python scripts/train.py --config configs/dueling_dqn.yaml --seed 7
-python scripts/train.py --config configs/a2c.yaml --seed 7
-python scripts/train.py --config configs/ppo.yaml --seed 7
+python scripts/train.py --config configs/ddqn.yaml         --seed 7
+python scripts/train.py --config configs/dueling_dqn.yaml  --seed 7
+python scripts/train.py --config configs/a2c.yaml          --seed 7
+python scripts/train.py --config configs/ppo.yaml          --seed 7
 ```
 
-여러 seed 반복:
+Multiple seeds:
 
 ```bash
 for s in 7 77 777; do
-  python scripts/train.py --config configs/dqn_baseline.yaml --seed $s
-  python scripts/train.py --config configs/ddqn.yaml --seed $s
-  python scripts/train.py --config configs/dueling_dqn.yaml --seed $s
-  python scripts/train.py --config configs/a2c.yaml --seed $s
-  python scripts/train.py --config configs/ppo.yaml --seed $s
+  for c in dqn_baseline ddqn dueling_dqn a2c ppo; do
+    python scripts/train.py --config configs/$c.yaml --seed $s
+  done
 done
 ```
 
-학습 결과는 `experiments/<timestamp>_<name>_seed<seed>/` 아래에 저장됩니다.
+Each run is written to `experiments/<timestamp>_<name>_seed<seed>/`:
 
 ```text
-config.yaml          # 실행 당시 config snapshot
+config.yaml          # frozen config snapshot for this run
 tensorboard/         # TensorBoard logs
-eval/                # EvalCallback outputs
-best_model/          # best_model.zip
+monitor_train/       # raw training episode returns/lengths
+eval/                # EvalCallback outputs (evaluations.npz)
+best_model/          # best_model.zip (selected on held-out eval score)
 checkpoints/         # periodic checkpoints
 final_model.zip      # final checkpoint
 ```
 
-`--total-timesteps`로 config의 학습 step 수를 임시 override할 수 있습니다.
+Temporarily override the step budget (handy for smoke tests):
 
 ```bash
 python scripts/train.py --config configs/ppo.yaml --seed 7 --total-timesteps 200000
 ```
 
-설정 **디렉터리**를 주면 `*.yaml`을 이름순으로 모두 학습합니다 (ablation sweep):
+Point `--config` at a **directory** to train every `*.yaml` in it sequentially
+(ablation sweep):
 
 ```bash
-python scripts/train.py --config configs/ablations_0603 --seed 7
+python scripts/train.py --config configs/ablations --seed 7
 ```
 
-각 설정마다 `experiments/<timestamp>_<yaml_stem>_seed<seed>/` 가 따로 생성됩니다.
+Each config then gets its own `experiments/<timestamp>_<yaml_stem>_seed<seed>/`.
 
-중단된 실험을 **같은 run 디렉토리**에서 이어 학습 (`config.yaml`·`checkpoints/` 재사용, seed는 디렉토리 이름에서 자동 추출):
+Resume an interrupted run from its **own** directory (reuses `config.yaml` and
+`checkpoints/`; the seed is parsed from the directory name):
 
 ```bash
 python scripts/train.py --run experiments/<run_dir>
 ```
 
-재개 시 `checkpoints/<algo>_*_steps.zip` 중 **가장 마지막** 스텝 파일을 로드합니다. periodic checkpoint에는 replay buffer가 없어 DQN은 buffer를 다시 채운 뒤 학습합니다.
+Resuming loads the **latest** `checkpoints/<algo>_*_steps.zip`. Periodic
+checkpoints don't store the replay buffer, so DQN refills it before resuming.
+
+Add `--evaluate-after-train` to run a 100-episode evaluation automatically when
+training finishes.
 
 ## Evaluation
 
-학습된 모델을 평가합니다. `--run`을 주면 `best_model/best_model.zip`을 우선 사용하고, 없으면 `final_model.zip`을 사용합니다.
+Evaluate a trained model. With `--run`, `best_model/best_model.zip` is preferred,
+falling back to `final_model.zip`:
 
 ```bash
 python scripts/evaluate.py --run experiments/<run_dir> --n-eval-episodes 100
 ```
 
-평가 환경은 학습 환경과 다르게 다음 기준을 사용합니다.
+The evaluation environment differs from training on purpose:
 
 | Setting | Train | Evaluation |
 |---|---|---|
 | `terminal_on_life_loss` | `true` | `false` |
 | `clip_reward` | `true` | `false` |
-| policy | exploration 포함 가능 | deterministic 기본값 |
+| policy | exploration during learning | deterministic (greedy) |
 
-즉, 평가 점수는 목숨을 모두 소진할 때까지 플레이한 실제 episode return에 가깝습니다.
+So the eval score approximates the true episode return — playing until all lives
+are lost, with the unclipped game score.
 
-주요 평가 지표:
+Reported metrics:
 
 | Metric | Meaning |
 |---|---|
-| `mean` | 평균 episode return |
-| `std` | episode return 표준편차 |
-| `median` | 중앙값 |
-| `min`, `max` | 최저/최고 episode return |
-| `95% CI` | bootstrap 기반 평균 보상의 95% 신뢰구간 |
-| `lengths` | 각 episode의 step 수 |
+| `mean`, `std` | mean and standard deviation of episode return |
+| `median` | median episode return |
+| `min`, `max` | lowest / highest episode return |
+| `95% CI` | bootstrap 95% confidence interval of the mean |
+| `lengths` | step count per episode |
+
+Evaluate **many runs at once** → leaderboard + comparison CSV. `--runs` accepts
+directories and/or glob patterns:
+
+```bash
+python scripts/evaluate.py --runs "experiments/*" --n-eval-episodes 100
+python scripts/evaluate.py --runs experiments/*ppo* --n-eval-episodes 100 \
+    --output-dir reports/tables/ppo_ablation_compare
+```
+
+Runs missing a `config.yaml` or model are skipped with a warning; one failure
+does not abort the rest.
 
 ## Visualization
 
-학습된 agent를 화면으로 확인합니다.
+Watch a trained agent play:
 
 ```bash
 python scripts/play.py --run experiments/<run_dir> --n-episodes 3
 python scripts/play.py --run experiments/<run_dir> --n-episodes 3 --window-scale 4
 ```
 
-`--window-scale`을 쓰면 OpenCV 창으로 확대 렌더링합니다.
+`--window-scale` renders an upscaled OpenCV window instead of the native
+Stella window.
 
 ## Plotting Results
 
-여러 실험 결과를 모아 learning curve, 최종 평가 분포, 요약 CSV를 생성합니다.
+Aggregate multiple runs into learning curves, final-evaluation distributions,
+and a summary CSV:
 
 ```bash
-# 특정 실험 묶음만 (2M step 실험 등)
+# one experiment group
 python scripts/plot_results.py --experiments experiments/2m --reports-dir reports
 
-# 여러 묶음 비교
+# compare several groups
 python scripts/plot_results.py --experiments experiments/2m experiments/1m
 
-# 미지정 시 experiments/ 전체 스캔
+# default: scan all of experiments/
 python scripts/plot_results.py
 ```
 
-출력 (파일명 접미사 = `experiments/` 바로 아래 디렉터리명, 예: `2m`):
+Output filenames are suffixed with the group name (the directory directly under
+`experiments/`, e.g. `2m`):
 
 ```text
 reports/figures/learning_curves_2m.png
-reports/figures/eval_distribution_2m.png   # summary.json 통계 (CI/std/median/min-max)
-
-# 학습 시드 7 만 비교할 때
-python scripts/plot_results.py --experiments experiments/2m --training-seed 7
-# → eval_distribution_2m_seed7.png
+reports/figures/eval_distribution_2m.png   # CI / std / median / min-max from summary.json
 reports/tables/runs_summary_2m.csv
 ```
 
-여러 묶음을 한 번에 그리면 `1m_2m` 처럼 연결됩니다. 접미사를 직접 지정하려면 `--slug my_label` 을 사용합니다.
+Filter to a single training seed with `--training-seed 7` (adds `_seed7` to the
+slug), or set the suffix manually with `--slug my_label`.
+
+## Reproducibility
+
+Every run seeds Python, NumPy, and PyTorch (CPU + CUDA) via
+[src/utils/seeding.py](src/utils/seeding.py), and SB3's per-algorithm `seed=` is
+forwarded for env/policy sampling. The eval environment uses a different seed
+(`train_seed + 1000`) so "best model" is selected on episodes the agent did not
+train on.
 
 ## Suggested Experiment Plan
 
-1. 환경 확인: `python verify_env.py`
-2. 핵심 알고리즘 비교: DQN, Double DQN, Dueling DQN, A2C, PPO
-3. 각 알고리즘 seed `7`, `77`, `777` 반복
-4. 각 run에 대해 `--n-eval-episodes 100` 평가
-5. ablation: frame stack 제거, reward clipping 제거, sticky action 적용
-6. `plot_results.py`로 그림과 표 생성
-7. 보고서에서 다음 관점으로 해석:
-   - value-based vs actor-critic
-   - off-policy vs on-policy
-   - replay buffer와 target network의 안정화 효과
-   - PPO clipping과 A2C의 단순 actor-critic 차이
-   - preprocessing 변화가 partial observability와 reward scale에 미치는 영향
+1. Verify the environment: `python verify_env.py`
+2. Train the core algorithms: DQN, Double DQN, Dueling DQN, A2C, PPO
+3. Repeat each with seeds `7`, `77`, `777`
+4. Evaluate every run with `--n-eval-episodes 100`
+5. Run ablations from `configs/ablations/` (e.g. frame-stack, replay buffer
+   size, target-update interval, PPO clip range / entropy, A2C optimizer)
+6. Generate figures and tables with `plot_results.py`
+7. Interpret the results through RL theory:
+   - value-based vs. actor-critic
+   - off-policy vs. on-policy sample efficiency
+   - stabilizing effect of the replay buffer and target network
+   - PPO's clipped objective vs. A2C's plain actor-critic
+   - how preprocessing changes affect partial observability and reward scale
 
 ## References
 
@@ -248,12 +330,11 @@ reports/tables/runs_summary_2m.csv
 
 ### Actor-Critic and Policy Optimization
 
-- Mnih, V., Badia, A. P., Mirza, M., et al. (2016). Asynchronous Methods for Deep Reinforcement Learning. *International Conference on Machine Learning (ICML)*.  
-  A3C paper; A2C is commonly treated as the synchronous, batched variant.
+- Mnih, V., Badia, A. P., Mirza, M., et al. (2016). Asynchronous Methods for Deep Reinforcement Learning. *International Conference on Machine Learning (ICML)*. A3C paper; A2C is the synchronous, batched variant.
+- Schulman, J., Moritz, P., Levine, S., Jordan, M., & Abbeel, P. (2016). High-Dimensional Continuous Control Using Generalized Advantage Estimation. *International Conference on Learning Representations (ICLR)*.
 - Schulman, J., Wolski, F., Dhariwal, P., Radford, A., & Klimov, O. (2017). Proximal Policy Optimization Algorithms. arXiv:1707.06347.
 
-### Additional Useful References
+### Additional References
 
 - Sutton, R. S., & Barto, A. G. (2018). *Reinforcement Learning: An Introduction* (2nd ed.). MIT Press.
 - Hessel, M., Modayil, J., van Hasselt, H., et al. (2018). Rainbow: Combining Improvements in Deep Reinforcement Learning. *AAAI Conference on Artificial Intelligence*.
-# -RL-Breakout

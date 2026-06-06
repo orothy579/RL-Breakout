@@ -1,4 +1,15 @@
-"""평가 유틸 — n 에피소드를 돌리고 정량 지표를 산출한다."""
+"""Evaluation utilities — run n episodes and compute quantitative metrics.
+
+External library: we use SB3's ``evaluate_policy`` only to roll out episodes
+and collect raw per-episode returns/lengths.
+
+MY ORIGINAL CONTRIBUTION: the statistics layer on top. Rather than reporting a
+bare mean, I summarise each evaluation with mean/std/median/min/max AND a
+non-parametric 95% bootstrap confidence interval of the mean (``_bootstrap_ci``).
+Atari return distributions are skewed and heavy-tailed, so a bootstrap CI is a
+more honest uncertainty estimate than a Gaussian ±std, and it is what the
+plotting/report code consumes to compare algorithms.
+"""
 
 from __future__ import annotations
 
@@ -13,7 +24,7 @@ from stable_baselines3.common.vec_env import VecEnv
 
 @dataclass
 class EvalSummary:
-    """평가 한 번의 통계 요약."""
+    """Statistical summary of a single evaluation run."""
 
     n_episodes: int
     mean: float
@@ -37,6 +48,13 @@ class EvalSummary:
 def _bootstrap_ci(
     values: np.ndarray, n_boot: int = 2000, rng: np.random.Generator | None = None
 ) -> tuple[float, float]:
+    """Non-parametric 95% bootstrap CI of the mean (my contribution).
+
+    Resample the episode returns with replacement ``n_boot`` times, take the
+    mean of each resample, then read off the 2.5th / 97.5th percentiles. This
+    makes no normality assumption, which matters for skewed Atari scores. The
+    RNG is seeded by the caller so the CI is reproducible.
+    """
     if len(values) == 0:
         return float("nan"), float("nan")
     rng = rng if rng is not None else np.random.default_rng(0)
@@ -52,7 +70,11 @@ def evaluate_model(
     deterministic: bool = True,
     seed: int | None = None,
 ) -> EvalSummary:
-    """``evaluate_policy`` 로 보상/길이를 얻은 뒤 통계 요약을 반환."""
+    """Roll out episodes via SB3's ``evaluate_policy`` then return statistics.
+
+    ``deterministic=True`` by default: we report the greedy/argmax policy so
+    the score is reproducible and not inflated/deflated by exploration noise.
+    """
     if seed is not None:
         env.seed(seed)
 

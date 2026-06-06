@@ -1,13 +1,23 @@
-"""Dueling DQN (Wang et al., ICML 2016) 정책/네트워크.
+"""Dueling DQN (Wang et al., ICML 2016) policy / network.
 
-표준 DQN의 마지막 fully-connected 단을 두 갈래로 분리:
+================================ ATTRIBUTION ================================
+External library: Stable-Baselines3 (SB3). We reuse SB3's ``QNetwork``,
+``CnnPolicy``, the ``NatureCNN`` feature extractor and ``create_mlp`` helper.
 
-    V(s)    : 상태 가치(1차원)
-    A(s,a)  : 행동 어드밴티지(n_actions 차원)
+MY ORIGINAL CONTRIBUTION / ARCHITECTURAL MODIFICATION
+  SB3 ships only a single-stream Q-head (one MLP mapping CNN features -> Q).
+  Here I subclass that head into a two-stream "dueling" head:
 
-Q(s,a) = V(s) + ( A(s,a) - mean_a A(s,a) )
+      V(s)    : scalar state value          (1 output)
+      A(s,a)  : per-action advantage        (n_actions outputs)
+      Q(s,a)  = V(s) + ( A(s,a) - mean_a A(s,a) )
 
-평균 빼주기는 V/A의 정체성 모호성(identifiability)을 해소한다.
+  Subtracting the mean advantage fixes the identifiability problem: without
+  it, V and A can drift by an arbitrary constant (only their sum Q is
+  observed), so training is ill-posed. Mean-centering pins down a unique
+  decomposition (Wang et al. 2016, Eq. 9). The shared NatureCNN trunk is
+  left untouched, so this is a drop-in head replacement, not a new network.
+============================================================================
 """
 
 from __future__ import annotations
@@ -29,7 +39,7 @@ from stable_baselines3.dqn.policies import CnnPolicy, QNetwork
 
 
 class DuelingQNetwork(QNetwork):
-    """Q = V + (A - mean_a A) 의 dueling head."""
+    """Q = V + (A - mean_a A) dueling head, replacing SB3's single-stream head."""
 
     def __init__(
         self,
@@ -41,23 +51,30 @@ class DuelingQNetwork(QNetwork):
         activation_fn: type[nn.Module] = nn.ReLU,
         normalize_images: bool = True,
     ) -> None:
-        # QNetwork.__init__ 가 마지막에 self.q_net 을 만들지만, 우리는 이를 V/A 분기로 교체.
-        # 부모 init 을 그대로 호출한 뒤 q_net 을 폐기 + 새 head 추가.
+        # We let SB3's QNetwork.__init__ run fully (it builds the standard
+        # single-stream ``self.q_net``), then we DISCARD that head and attach
+        # our own value/advantage streams. Reusing the parent init keeps the
+        # feature extractor, image-normalization flags, etc. exactly as SB3
+        # expects them.
         super().__init__(
             observation_space=observation_space,
             action_space=action_space,
             features_extractor=features_extractor,
             features_dim=features_dim,
-            net_arch=net_arch if net_arch else [512],
+            net_arch=net_arch if net_arch else [512],  # 512 hidden units (Wang 2016)
             activation_fn=activation_fn,
             normalize_images=normalize_images,
         )
 
-        # Wang 2016 의 권고: V/A 모두 hidden 512 후 head 로 매핑.
         hidden = self.net_arch
         action_dim = int(self.action_space.n)
-        # 기존 q_net 은 의미 없으니 비활성화 (저장/로드 호환 위해 빈 모듈 유지).
+        # Disable the inherited single-stream head, but keep it as an
+        # Identity module so SB3's state_dict save/load stays structurally
+        # compatible (the key still exists, it just maps to a no-op).
         self.q_net = nn.Identity()
+        # Two parallel MLP streams off the shared CNN features:
+        #   value_net:     features -> hidden -> 1            (state value V)
+        #   advantage_net: features -> hidden -> n_actions    (advantages A)
         self.value_net = nn.Sequential(*create_mlp(self.features_dim, 1, hidden, self.activation_fn))
         self.advantage_net = nn.Sequential(
             *create_mlp(self.features_dim, action_dim, hidden, self.activation_fn)
@@ -65,29 +82,36 @@ class DuelingQNetwork(QNetwork):
 
     def forward(self, obs: PyTorchObs) -> th.Tensor:
         features = self.extract_features(obs, self.features_extractor)
-        value = self.value_net(features)
-        advantage = self.advantage_net(features)
+        value = self.value_net(features)            # (B, 1)
+        advantage = self.advantage_net(features)    # (B, n_actions)
+        # Mean-centered aggregation -> resolves V/A identifiability (Wang 2016).
         return value + advantage - advantage.mean(dim=1, keepdim=True)
 
 
 class DuelingCnnPolicy(CnnPolicy):
-    """DQNPolicy 의 ``make_q_net`` 만 DuelingQNetwork 로 교체."""
+    """SB3's ``CnnPolicy`` with only ``make_q_net`` overridden to build a DuelingQNetwork.
+
+    Everything else (Nature-CNN trunk, optimizer, epsilon-greedy action
+    selection, save/load) is inherited unchanged from SB3.
+    """
 
     def make_q_net(self) -> QNetwork:
+        # Same plumbing SB3 uses, but instantiating OUR dueling head instead
+        # of the default QNetwork.
         net_args = self._update_features_extractor(self.net_args, features_extractor=None)
         return DuelingQNetwork(**net_args).to(self.device)
 
 
-# SB3 가 정책을 string 으로 lookup 할 수 있도록 alias 도 제공
+# Alias so SB3 can also resolve the policy by string if ever needed.
 DuelingPolicy = DuelingCnnPolicy
 
 
 def patch_default_features_extractor(policy_kwargs: dict[str, Any]) -> dict[str, Any]:
-    """Dueling 정책의 NatureCNN 기본값을 보장."""
+    """Ensure the Dueling policy defaults to the NatureCNN feature extractor."""
     pk = dict(policy_kwargs or {})
     pk.setdefault("features_extractor_class", NatureCNN)
     return pk
 
 
-# Schedule 은 ``BasePolicy._dummy_schedule`` 사용을 위해 export
+# Re-export so ``BasePolicy._dummy_schedule`` / ``Schedule`` stay importable.
 _ = (BasePolicy, Schedule)

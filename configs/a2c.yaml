@@ -1,22 +1,23 @@
-# A2C (Mnih et al., 2016 — A3C 의 동기적(Synchronous) 변형) — on-policy 비교군.
-# DQN/PPO 와 동일한 baseline 전처리·시드·평가 프로토콜을 유지하면서
-# "정책 경사 + 가치 헤드" 계열의 가장 단순한 형태를 비교한다.
+# A2C (Mnih et al., 2016 — synchronous variant of A3C) — on-policy comparison.
+# Same baseline preprocessing / seeding / evaluation protocol as DQN and PPO,
+# providing the SIMPLEST actor-critic ("policy gradient + value head") so the
+# extra machinery in PPO can be judged by contrast.
 
 algo:
   name: a2c
   features: {}
   kwargs:
     policy: CnnPolicy
-    learning_rate: 7.0e-4                # A3C/A2C 표준값 (Mnih et al., 2016)
-    n_steps: 5                           # n_envs * n_steps = 8 * 5 = 40 step / update
-    gamma: 0.99
-    gae_lambda: 1.0                      # 표준 A2C 는 n-step return → λ=1
-    ent_coef: 0.01
-    vf_coef: 0.25                        # Atari A2C 권장값 (PPO 의 0.5 와 의도적으로 구분)
-    max_grad_norm: 0.5
+    learning_rate: 7.0e-4        # standard A3C/A2C LR (Mnih et al., 2016)
+    n_steps: 5                   # short n-step rollout; n_envs * n_steps = 8 * 5 = 40 steps/update
+    gamma: 0.99                  # discount (matches DQN/PPO)
+    gae_lambda: 1.0              # lambda=1 -> plain n-step return (textbook A2C, no GAE smoothing)
+    ent_coef: 0.01               # entropy bonus -> exploration
+    vf_coef: 0.25                # value-loss weight; Atari A2C value (deliberately != PPO's 0.5)
+    max_grad_norm: 0.5           # gradient clipping
     rms_prop_eps: 1.0e-5
-    use_rms_prop: true                   # 원논문은 RMSProp 옵티마이저
-    normalize_advantage: false           # 단순 A2C: advantage 정규화 끔
+    use_rms_prop: true           # original A3C/A2C uses RMSProp (not Adam)
+    normalize_advantage: false   # keep "vanilla" A2C: no advantage normalization
 
 env:
   env_id: ALE/Breakout-v5
@@ -27,18 +28,17 @@ env:
     repeat_action_probability: 0.0
     full_action_space: false
   wrapper_kwargs:
-    terminal_on_life_loss: true          # 학습 시 신호 강화 (DeepMind 표준)
-    clip_reward: true
+    terminal_on_life_loss: true   # TRAIN: denser signal (DeepMind protocol)
+    clip_reward: true             # TRAIN: clipped rewards for stable advantages
 
 eval_env:
   n_envs: 1
   wrapper_kwargs:
-    terminal_on_life_loss: false         # 평가 시 진짜 에피소드/스코어 사용
-    clip_reward: false
+    terminal_on_life_loss: false  # EVAL: full-episode real game
+    clip_reward: false            # EVAL: true unclipped score
 
 train:
-  total_timesteps: 10000000
+  total_timesteps: 10000000  # same 10M budget as every other config
   checkpoint_freq: 1000000
   eval_freq: 1000000
   n_eval_episodes: 3
-

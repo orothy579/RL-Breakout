@@ -1,9 +1,0 @@
-# PPO axis F — learning rate (낮춤).
-# 효과: 2.5e-4 → 1.0e-4 로 보폭↓ → 업데이트 안정성↑, 수렴 속도↓.
-# 근거: clip_range 는 baseline(0.1) 유지 → 학습률 단일 변수만 비교.
-# 주의: YAML 은 `1.0e-4` 처럼 소수점을 넣어야 float 로 파싱됨 (`1e-4` 는 문자열로 읽혀 SB3 가 거부).
-inherits: ../ppo.yaml
-
-algo:
-  kwargs:
-    learning_rate: 1.0e-4

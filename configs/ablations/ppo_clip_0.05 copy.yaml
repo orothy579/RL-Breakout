@@ -1,8 +1,0 @@
-# PPO axis A — narrow trust region.
-# 효과: clip_range 0.1 → 0.05 → 정책 업데이트 폭↓ → 매우 보수적/안정적이나 학습 느림.
-# 근거: Schulman 2017. ppo_clip_0.2 / 0.3 와 함께 clip 스윕(0.05·0.1·0.2·0.3)을 완성한다.
-inherits: ../ppo.yaml
-
-algo:
-  kwargs:
-    clip_range: 0.05

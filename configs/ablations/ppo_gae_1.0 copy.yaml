@@ -1,9 +1,0 @@
-# PPO axis B — GAE lambda = 1.0 (Monte-Carlo advantage).
-# 효과: λ=1 → GAE 가 사실상 TD(1)/Monte-Carlo return advantage 가 됨.
-#       bias≈0 이지만 variance↑ → rollout 이 짧으면(n_steps=128) 추정이 매우 noisy.
-# 근거: GAE 의 λ=1 극단. a2c_gae_0.95 / ppo_gae_0.9 와 함께 λ 스윕(0.9·0.95·1.0)을 완성한다.
-inherits: ../ppo.yaml
-
-algo:
-  kwargs:
-    gae_lambda: 1.0

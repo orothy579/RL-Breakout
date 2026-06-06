@@ -1,0 +1,7 @@
+# PPO axis A — even wider trust region.
+# 효과: clip 효과 약화 → vanilla policy gradient 에 가까워짐. divergence 위험↑.
+inherits: ../ppo.yaml
+
+algo:
+  kwargs:
+    clip_range: 0.3

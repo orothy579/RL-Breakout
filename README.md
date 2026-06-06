@@ -132,6 +132,22 @@ final_model.zip      # final checkpoint
 python scripts/train.py --config configs/ppo.yaml --seed 7 --total-timesteps 200000
 ```
 
+설정 **디렉터리**를 주면 `*.yaml`을 이름순으로 모두 학습합니다 (ablation sweep):
+
+```bash
+python scripts/train.py --config configs/ablations_0603 --seed 7
+```
+
+각 설정마다 `experiments/<timestamp>_<yaml_stem>_seed<seed>/` 가 따로 생성됩니다.
+
+중단된 실험을 **같은 run 디렉토리**에서 이어 학습 (`config.yaml`·`checkpoints/` 재사용, seed는 디렉토리 이름에서 자동 추출):
+
+```bash
+python scripts/train.py --run experiments/<run_dir>
+```
+
+재개 시 `checkpoints/<algo>_*_steps.zip` 중 **가장 마지막** 스텝 파일을 로드합니다. periodic checkpoint에는 replay buffer가 없어 DQN은 buffer를 다시 채운 뒤 학습합니다.
+
 ## Evaluation
 
 학습된 모델을 평가합니다. `--run`을 주면 `best_model/best_model.zip`을 우선 사용하고, 없으면 `final_model.zip`을 사용합니다.

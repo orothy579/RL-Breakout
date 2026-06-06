@@ -1,0 +1,9 @@
+# PPO axis E — number of epochs per update.
+# 효과: n_epochs 4 → 10 → 같은 rollout 을 더 여러 번 재사용 → sample efficiency↑,
+#       단 정책이 수집 분포에서 멀어져(off-policy) clip 이 자주 걸리고 과적합 위험↑.
+# 근거: n_epochs 는 PPO 의 데이터 재사용 강도를 정하는 표준 축. baseline 4 의 위쪽을 본다.
+inherits: ../ppo.yaml
+
+algo:
+  kwargs:
+    n_epochs: 10

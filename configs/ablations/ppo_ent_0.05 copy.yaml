@@ -1,0 +1,9 @@
+# PPO axis C — entropy coefficient (높임).
+# 효과: ent_coef 0.01 → 0.05 → 탐험 보너스↑ → 정책이 더 오래 stochastic 유지.
+#       조기 수렴 방지에 도움이 되나 과도하면 점수 상승이 느려질 수 있음.
+# 근거: ppo_ent_0.0 / baseline(0.01) 와 함께 ent_coef 스윕(0.0·0.01·0.05)을 구성한다.
+inherits: ../ppo.yaml
+
+algo:
+  kwargs:
+    ent_coef: 0.05

@@ -1,0 +1,8 @@
+# PPO axis A — wider trust region.
+# 효과: 정책 업데이트 폭↑ → 빠른 학습 가능, 단 안정성↓ 가능.
+# Schulman 2017 원논문 권장값 0.2.
+inherits: ../ppo.yaml
+
+algo:
+  kwargs:
+    clip_range: 0.2

@@ -1,0 +1,10 @@
+# PPO axis B — GAE lambda (낮춤).
+# 효과: λ 0.95 → 0.90 → advantage 추정에서 짧은 horizon 비중↑.
+#       bias↑ / variance↓ → 업데이트는 안정되나 장기 보상 신호는 약해짐.
+# 근거: Schulman et al. 2016 (GAE). λ 는 bias-variance 를 직접 제어하는 핵심 축이며
+#       0.90~0.95 가 실무 권장 구간. baseline 0.95 의 반대 방향을 본다.
+inherits: ../ppo.yaml
+
+algo:
+  kwargs:
+    gae_lambda: 0.90

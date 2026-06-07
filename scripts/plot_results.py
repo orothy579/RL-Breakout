@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import re
 import sys
@@ -41,21 +42,80 @@ def _group_name_under_experiments(path: Path) -> str | None:
     return None
 
 
-def _output_slug(experiment_paths: list[Path], runs: list[dict[str, Any]]) -> str:
-    """출력 파일명 접미사: ``experiments`` 바로 아래 디렉터리명(들)."""
+def _is_run_dir(path: Path) -> bool:
+    return (path / "config.yaml").exists()
+
+
+def _is_group_dir(path: Path) -> bool:
+    """``experiments/<group>/`` 처럼 하위 run 을 담는 폴더인지 판별."""
+    if not path.is_dir() or path.name.startswith("."):
+        return False
+    if _is_run_dir(path):
+        return False
+    return any(_is_run_dir(child) for child in path.iterdir() if child.is_dir())
+
+
+def _collect_group_labels(experiment_paths: list[Path]) -> list[str]:
+    """출력 slug 용 그룹 라벨 수집 (개별 run 폴더명은 제외)."""
     labels: list[str] = []
-    for root in experiment_paths:
-        name = _group_name_under_experiments(root)
-        if name and name not in labels:
+    seen: set[str] = set()
+
+    def _add(name: str) -> None:
+        if name and name not in seen:
             labels.append(name)
+            seen.add(name)
+
+    for root in experiment_paths:
+        root = root.resolve()
+        group = _group_name_under_experiments(root)
+        if group and _is_group_dir(root):
+            _add(group)
+            continue
+        if group and _is_run_dir(root):
+            parent = root.parent
+            if parent.name != "experiments":
+                _add(parent.name)
+            else:
+                _add("root")
+            continue
+        if not root.is_dir():
+            continue
+        for child in sorted(root.iterdir()):
+            if _is_group_dir(child):
+                _add(child.name)
+            elif _is_run_dir(child):
+                _add("root")
+    return labels
+
+
+def _truncate_slug(slug: str, *, max_len: int = 80) -> str:
+    """파일명 길이 제한 (Linux 255 byte) — 초과 시 짧게 자르고 해시 접미사."""
+    if len(slug) <= max_len:
+        return slug
+    digest = hashlib.sha256(slug.encode()).hexdigest()[:8]
+    return f"{slug[: max_len - 9]}_{digest}"
+
+
+def _output_slug(experiment_paths: list[Path], runs: list[dict[str, Any]]) -> str:
+    """출력 파일명 접미사: ``experiments`` 바로 아래 그룹 디렉터리명(들)."""
+    labels = _collect_group_labels(experiment_paths)
     if not labels:
         for r in runs:
-            name = _group_name_under_experiments(r["run_dir"])
-            if name and name not in labels:
-                labels.append(name)
+            parent = r["run_dir"].resolve().parent
+            if parent.name == "experiments":
+                labels.append("root")
+            elif parent.name not in labels:
+                labels.append(parent.name)
     if not labels:
         return "runs"
-    return _slugify("_".join(sorted(labels)))
+    unique = sorted(set(labels))
+    if len(unique) > 8:
+        digest = hashlib.sha256("_".join(unique).encode()).hexdigest()[:8]
+        head = "_".join(unique[:4])
+        slug = f"{head}_plus{len(unique) - 4}_{digest}"
+    else:
+        slug = "_".join(unique)
+    return _truncate_slug(_slugify(slug))
 
 
 def _slugged_path(path: Path, slug: str) -> Path:

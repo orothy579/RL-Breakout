@@ -7,6 +7,7 @@ import argparse
 import csv
 import glob
 import json
+import re
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -25,9 +26,13 @@ SUMMARY_JSON = "summary.json"
 EPISODES_CSV = "episodes.csv"
 
 
+def _slugify(name: str) -> str:
+    return re.sub(r"[^a-zA-Z0-9._-]+", "_", name).strip("_") or "runs"
+
+
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Evaluate a trained agent on ALE/Breakout-v5.")
-    p.add_argument("--run", type=Path, default=None, help="실험 디렉토리 (단일)")
+    p.add_argument("--run", type=Path, default=None, help="실험 run 디렉토리 (단일) 또는 하위 run 을 담은 그룹 폴더")
     p.add_argument(
         "--runs",
         type=str,
@@ -214,30 +219,64 @@ def evaluate_run(
     return summary
 
 
+def _is_evaluable_run(path: Path) -> bool:
+    return (path / "config.yaml").exists() and (
+        (path / "best_model" / "best_model.zip").exists()
+        or (path / "final_model.zip").exists()
+    )
+
+
+def _scan_run_dirs(root: Path) -> list[Path]:
+    """``root`` 자체 또는 하위(최대 2 depth)에서 평가 가능한 run 을 수집."""
+    root = root.resolve()
+    if _is_evaluable_run(root):
+        return [root]
+
+    found: list[Path] = []
+    if not root.is_dir():
+        return found
+
+    for child in sorted(root.iterdir()):
+        if not child.is_dir() or child.name.startswith("."):
+            continue
+        if _is_evaluable_run(child):
+            found.append(child.resolve())
+            continue
+        if (child / "config.yaml").exists():
+            print(f"[eval] skip {child.name}: config.yaml/model 누락")
+            continue
+        for sub in sorted(child.iterdir()):
+            if not sub.is_dir():
+                continue
+            if _is_evaluable_run(sub):
+                found.append(sub.resolve())
+            elif (sub / "config.yaml").exists():
+                print(f"[eval] skip {sub.name}: config.yaml/model 누락")
+    return found
+
+
 def _expand_run_paths(patterns: list[str]) -> list[Path]:
     """디렉토리/글로브 패턴 목록을 평가 가능한 run 디렉토리 리스트로 확장.
 
-    - 이미 존재하는 디렉토리는 그대로 사용 (셸이 글로브를 펼친 경우 포함).
-    - 그 외는 ``glob`` 패턴으로 처리 (따옴표로 감싼 패턴 지원).
+    - 단일 run 디렉토리, ``experiments/for_eval/`` 같은 그룹 폴더, 글로브 패턴 지원.
     - ``config.yaml`` 과 모델(zip)이 모두 있는 디렉토리만 통과, 중복은 제거.
     """
     seen: dict[Path, None] = {}
     for pat in patterns:
         p = Path(pat)
-        matches = [p] if p.is_dir() else [Path(m) for m in sorted(glob.glob(pat))]
-        if not matches:
-            print(f"[eval] warning: no match for {pat!r}")
+        if p.is_dir():
+            matches = _scan_run_dirs(p)
+            if not matches:
+                print(f"[eval] warning: no evaluable run under {p}")
+        else:
+            matches = [Path(m) for m in sorted(glob.glob(pat))]
+            if not matches:
+                print(f"[eval] warning: no match for {pat!r}")
         for m in matches:
             mr = m.resolve()
-            if not mr.is_dir():
-                continue
-            has_cfg = (mr / "config.yaml").exists()
-            has_model = (mr / "best_model" / "best_model.zip").exists() or (
-                mr / "final_model.zip"
-            ).exists()
-            if has_cfg and has_model:
+            if mr.is_dir() and _is_evaluable_run(mr):
                 seen.setdefault(mr, None)
-            else:
+            elif mr.is_dir():
                 print(f"[eval] skip {mr.name}: config.yaml/model 누락")
     return list(seen.keys())
 
@@ -315,20 +354,34 @@ def evaluate_runs(
     print(f"[eval] evaluated {len(results)}/{len(run_dirs)} runs")
 
 
+def _compare_csv_path(args: argparse.Namespace, *, label: str | None = None) -> Path:
+    if args.output_dir is not None:
+        args.output_dir.mkdir(parents=True, exist_ok=True)
+        name = "comparison.csv" if label is None else f"comparison_{label}.csv"
+        return args.output_dir / name
+    ts = datetime.now().strftime("%Y-%m-%d_%H%M%S")
+    suffix = f"_{label}" if label else ""
+    return ROOT / "reports" / "tables" / f"eval_compare{suffix}_{ts}.csv"
+
+
 def main() -> None:
     args = parse_args()
 
-    # 다중 run 평가 경로: leaderboard + 비교 CSV
+    batch_patterns: list[str] | None = None
+    batch_label: str | None = None
     if args.runs:
-        run_dirs = _expand_run_paths(args.runs)
+        batch_patterns = args.runs
+    elif args.run is not None:
+        run = args.run.resolve()
+        if not _is_evaluable_run(run):
+            batch_patterns = [str(run)]
+            batch_label = _slugify(run.name)
+
+    if batch_patterns:
+        run_dirs = _expand_run_paths(batch_patterns)
         if not run_dirs:
-            raise SystemExit("[eval] --runs 가 유효한 run 디렉토리를 찾지 못했습니다.")
-        if args.output_dir is not None:
-            args.output_dir.mkdir(parents=True, exist_ok=True)
-            compare_csv = args.output_dir / "comparison.csv"
-        else:
-            ts = datetime.now().strftime("%Y-%m-%d_%H%M%S")
-            compare_csv = ROOT / "reports" / "tables" / f"eval_compare_{ts}.csv"
+            raise SystemExit("[eval] 평가 가능한 run 디렉토리를 찾지 못했습니다.")
+        compare_csv = _compare_csv_path(args, label=batch_label)
         print(f"[eval] evaluating {len(run_dirs)} runs "
               f"(n_eval_episodes={args.n_eval_episodes}, seed={args.seed})")
         evaluate_runs(

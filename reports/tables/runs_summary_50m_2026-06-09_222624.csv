@@ -1,0 +1,6 @@
+run,algo,seed,last_step,last_eval_mean,last_eval_std,n_final_eval_runs,final_eval_mean_avg
+2026-05-29_135300_a2c_seed7,a2c,7,50000000,1.0,1.0,1,378.28
+2026-06-02_185902_dqn_baseline_seed7,dqn,7,50000000,165.0,151.0,1,368.67
+2026-06-01_151746_ppo_seed0,ppo,0,50000000,20.0,0.0,1,307.0
+2026-06-02_092956_ppo_seed7,ppo,7,29000000,8.0,0.0,1,369.27
+2026-06-06_142424_ppo_clip_0.3_seed7,ppo[clip_0.3],7,50000000,367.0,19.79898987322333,1,303.09

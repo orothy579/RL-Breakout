@@ -26,7 +26,7 @@ language: Korean
 
 # 초록 (Abstract)
 
-본 연구는 Atari 게임 환경 ALE/Breakout-v5에서 다섯 가지 심층 강화학습 알고리즘—DQN (Mnih et al., 2015), Double DQN (van Hasselt et al., 2016), Dueling DQN (Wang et al., 2016), PPO (Schulman et al., 2017), A2C (Mnih et al., 2016)—을 비교하고, 단일 변수(one-knob-at-a-time) 원칙에 따른 하이퍼파라미터 ablation을 수행하여 강화학습 이론과 실제 결과의 간극을 분석하였다. 알고리즘 비교는 최종 성능 외에도 샘플 효율(AUC, 임계 도달 스텝), 안정성(tail std, drawdown), 행동 형태(타임캡 도달률 cap_rate, 왜도), 연산 비용, 통계적 유의성의 다기준으로 수행하였다. 시드 7/77/777에 대한 교차 시드 분석에서 10M 스텝 기준 알고리즘 순위는 A2C(교차 시드 평균 207점) > Dueling DQN(127점) > PPO(103점) > DQN(55점) ≈ Double DQN(50점)으로 나타났다. Ablation 분석에서는 DQN 학습률을 1.0e-4에서 1.5e-4로 조정하면 성능이 2.5배 향상되는 반면, A2C에서 advantage 정규화를 활성화하면 성능이 97% 폭락하는 대조적인 결과가 확인되었다. 학습 예산을 50M 스텝으로 확장하면 off-policy DQN(369점)이 A2C(378점) 및 PPO(338점)에 근접하여, 단기 예산에서의 on-policy 우위가 예산 의존적임을 확인하였다.
+본 연구는 Atari 게임 환경 ALE/Breakout-v5에서 다섯 가지 심층 강화학습 알고리즘—DQN (Mnih et al., 2015), Double DQN (van Hasselt et al., 2016), Dueling DQN (Wang et al., 2016), PPO (Schulman et al., 2017), A2C (Mnih et al., 2016)—을 비교하고, 단일 변수(one-knob-at-a-time) 원칙에 따른 하이퍼파라미터 ablation을 수행하여 강화학습 이론과 실제 결과의 간극을 분석하였다. 알고리즘 비교는 최종 성능 외에도 샘플 효율(AUC, 임계 도달 스텝), 안정성(tail std, drawdown), 행동 형태(타임캡 도달률 cap_rate, 왜도), 연산 비용, 통계적 유의성의 다기준으로 수행하였다. 시드 7/77/777에 대한 교차 시드 분석에서 10M 스텝 기준 알고리즘 순위는 A2C(교차 시드 평균 207점) > Dueling DQN(127점) > PPO(103점) > DQN(55점) ≈ Double DQN(50점)으로 나타났다. Ablation 분석에서는 DQN 학습률을 1.0e-4에서 1.5e-4로 조정하면 성능이 2.5배 향상되는 반면, A2C에서 advantage 정규화를 활성화하면 성능이 97% 폭락하는 대조적인 결과가 확인되었다. 학습 예산을 50M 스텝으로 확장하면 off-policy DQN(369점)이 A2C(378점) 및 PPO(338점)에 근접하여, 단기 예산에서의 on-policy 우위가 예산 의존적임을 확인하였다. 전체 분석은 5개 알고리즘을 최대 4개 학습 예산(1M/2M/10M/50M 스텝) 및 최대 3개 시드에 걸쳐 수행된 **약 54회의 독립 학습 실험** 결과를 기반으로 하며, DQN(6종) · PPO(10종) · A2C(3종) 합계 **19개의 ablation 변형 실험**(설계 27종 중 완료 19종)을 포함한다. 학습에 사용된 총 환경 스텝은 약 5억 스텝(≈ 500M env steps)이며, 논문 본문의 표·그림 외 원시 데이터와 분석 코드는 리포지토리의 [scripts/](../scripts/)와 [src/analysis.py](../src/analysis.py)를 통해 완전히 재현 가능하다.
 
 *키워드*: 심층 강화학습, Atari Breakout, DQN, PPO, A2C, 하이퍼파라미터 민감도, 샘플 효율
 
@@ -148,10 +148,10 @@ DQN/Double DQN/Dueling DQN의 하이퍼파라미터는 표 3에, PPO는 표 4에
 | 하이퍼파라미터 | 값 | 근거 |
 |---|---|---|
 | `learning_rate` | 1.0e-4 | SB3 Atari DQN 기본값 |
-| `buffer_size` | 250,000 | VRAM/RAM 제약 하의 절충 (Mnih et al., 2015의 1M 대비 축소) |
-| `batch_size` | 32 | Nature DQN 원 논문값 |
+| `buffer_size` | 250,000 | VRAM/RAM 제약 으로 인한 절충값 (Mnih et al., 2015의 1M 대비 축소) |
+| `batch_size` | 32 | Nature DQN 논문 설정값 |
 | `train_freq` | 4 steps | 4 스텝마다 1회 업데이트 |
-| `target_update_interval` | 1,000 | SB3 기본값 (원 논문 10,000 대비 공격적) |
+| `target_update_interval` | 1,000 | SB3 기본값 |
 | `exploration_fraction` | 0.1 | 전체의 10%에서 ε 1.0→0.01로 감소 |
 | `gamma` | 0.99 | 표준값 |
 | `max_grad_norm` | 10.0 | — |
@@ -167,8 +167,8 @@ DQN/Double DQN/Dueling DQN의 하이퍼파라미터는 표 3에, PPO는 표 4에
 | `batch_size` | 256 | — |
 | `n_epochs` | 4 | SB3 Atari 기본값 |
 | `gamma` | 0.99 | 표준값 |
-| `gae_lambda` | 0.95 | GAE 원 논문 (Schulman et al., 2016) 기본값 |
-| `clip_range` | 0.1 | SB3 Atari 기본값 (원 논문 0.2보다 보수적) |
+| `gae_lambda` | 0.95 | GAE 원 논문 (Schulman et al., 2016) 설정값 |
+| `clip_range` | 0.1 | SB3 Atari 기본값|
 | `ent_coef` | 0.01 | 탐색 장려를 위한 엔트로피 보너스 |
 | `vf_coef` | 0.5 | 가치 손실 가중치 |
 | `max_grad_norm` | 0.5 | — |
@@ -180,7 +180,7 @@ DQN/Double DQN/Dueling DQN의 하이퍼파라미터는 표 3에, PPO는 표 4에
 | 하이퍼파라미터 | 값 | 근거 |
 |---|---|---|
 | `learning_rate` | 7.0e-4 | A3C/A2C 표준 RMSProp LR |
-| `n_steps` | 5 | 단기 n-step return (원 논문 방식) |
+| `n_steps` | 5 | 단기 n-step return (A3C 논문 방식) |
 | `gamma` | 0.99 | 표준값 |
 | `gae_lambda` | 1.0 | λ=1 = 순수 n-step return (GAE 미사용) |
 | `ent_coef` | 0.01 | 엔트로피 보너스 |
@@ -233,7 +233,11 @@ DQN/Double DQN/Dueling DQN의 하이퍼파라미터는 표 3에, PPO는 표 4에
 | DQN | 3 | 55.0 | 22.1 – 75.7 | 76 / 67 / 22 | 23.5 |
 | Double DQN | 3 | 49.8 | 26.6 – 90.4 | 27 / 33 / 90 | 28.7 |
 
-> **[그림 1 삽입 위치]** `seed_aggregate.png` — 교차 시드 막대 그래프(평균 ± 95% CI), IQM 다이아몬드, 개별 시드 점. 이 절의 핵심 비교 그림.
+**그림 1**
+
+*교차 시드 알고리즘 성능 비교 (10M 스텝, seeds 7/77/777) — 막대: 평균 ± 95% 부트스트랩 CI, 다이아몬드: IQM, 점: 개별 시드 점수*
+
+![교차 시드 알고리즘 성능 비교](figures/notebook/seed_aggregate.png)
 
 순위는 A2C > Dueling > PPO > DQN ≈ Double DQN이나, CI가 매우 넓어 A2C를 제외하면 막대 간 우열을 단정하기 어렵다. PPO(22.9–261.8), Dueling(36.8–268.6), DQN(22.1–75.7), DDQN(26.6–90.4)의 CI는 크게 겹친다. 시드 7은 A2C·PPO·Dueling에 유리한 실행이었으며, 세 알고리즘 모두 seed 7 점수가 자신의 CI 상단에 위치한다. 6절의 대표값(A2C 386, PPO 262)은 이 운 좋은 단일 시드값이며, 교차 시드 평균은 그 절반 수준이다.
 
@@ -252,9 +256,51 @@ DQN/Double DQN/Dueling DQN의 하이퍼파라미터는 표 3에, PPO는 표 4에
 | DQN | 5.9 (3) | 26.7 (2) | 55.0 (3) | 368.7 (1) |
 | Double DQN | 6.7 (3) | — | 49.8 (3) | — |
 
-> **[그림 2 삽입 위치]** `learning_curves_10m.png` — 환경 스텝 대비 평가 보상 학습 곡선 (10M 그룹). 알고리즘별 학습 진행 속도와 수렴 양상 비교.
+**그림 2**
+
+*10M 스텝 학습 곡선 — 환경 스텝 대비 평가 보상, 알고리즘별 학습 속도 및 수렴 양상 비교*
+
+![10M 학습 곡선](figures/notebook/learning_curves_10m.png)
 
 50M에서 off-policy DQN(369점)이 A2C(378점)·PPO(338점)에 근접한다. 10M에서 관측된 on-policy의 큰 우위는 영구적 알고리즘 특성이 아니라 짧은 예산의 산물이며, 충분한 스텝이 주어지면 DQN의 샘플 재사용 능력이 on-policy를 따라잡는다는 통설과 부합한다.
+
+예산별 학습 곡선과 최종 평가 점수 분포를 그림 9–14에 제시한다.
+
+**그림 9**
+
+*1M 스텝 학습 곡선 — 초기 학습 단계에서의 알고리즘별 수렴 속도 비교*
+
+![1M 학습 곡선](figures/notebook/learning_curves_1m.png)
+
+**그림 10**
+
+*2M 스텝 학습 곡선*
+
+![2M 학습 곡선](figures/notebook/learning_curves_2m.png)
+
+**그림 11**
+
+*50M 스텝 학습 곡선 — off-policy DQN이 on-policy 알고리즘 성능에 수렴하는 과정*
+
+![50M 학습 곡선](figures/notebook/learning_curves_50m.png)
+
+**그림 12**
+
+*1M 스텝 최종 평가 점수 분포 (평균 ± CI)*
+
+![1M 평가 분포](figures/eval_distribution_1m_2026-06-09_222615.png)
+
+**그림 13**
+
+*10M 스텝 최종 평가 점수 분포*
+
+![10M 평가 분포](figures/eval_distribution_10m_2026-06-09_222621.png)
+
+**그림 14**
+
+*50M 스텝 최종 평가 점수 분포 — DQN과 on-policy 알고리즘의 격차 축소 확인*
+
+![50M 평가 분포](figures/eval_distribution_50m_2026-06-09_222624.png)
 
 ## 5.6 샘플 효율·안정성·행동 (seed 7, 10M)
 
@@ -272,9 +318,17 @@ DQN/Double DQN/Dueling DQN의 하이퍼파라미터는 표 3에, PPO는 표 4에
 | DQN | 76 | 23.3 | 6.0M | 0.22 | 28,646 | −1.00 | 7.0 |
 | Double DQN | 27 | 17.7 | 미도달 | 1.00 | 108,000 | −0.08 | 1.9 |
 
-> **[그림 3 삽입 위치]** `sample_efficiency.png` — 왼쪽: 학습 곡선 AUC, 오른쪽: 50점 도달 스텝. 샘플 효율 시각화.
+**그림 3**
 
-> **[그림 4 삽입 위치]** `ecdf_10m.png` — 최종 평가 보상의 ECDF. 분포 전체의 확률적 지배 관계 확인.
+*샘플 효율 비교 — 왼쪽: 학습 곡선 AUC, 오른쪽: 50점 도달 스텝 (미도달 시 10M으로 표시)*
+
+![샘플 효율](figures/notebook/sample_efficiency.png)
+
+**그림 4**
+
+*10M 스텝 최종 평가 보상의 누적 분포 함수(ECDF) — 확률적 지배 관계 시각화*
+
+![ECDF 10M](figures/notebook/ecdf_10m.png)
 
 학습 속도 측면에서 A2C가 가장 빠르고(AUC 176, 2.0M 스텝에 50점 도달) PPO가 뒤따른다(AUC 136, 3.0M). Dueling은 최종 점수는 높지만 AUC가 낮아(43) 늦게 학습하는 유형이다. DDQN(seed 7)은 50점에 끝내 도달하지 못하였다. 행동 측면에서 Double DQN(seed 7)은 `cap_rate=1.00`, 평균 길이 108,000(최댓값)이면서도 점수는 27에 불과하여 벽돌을 깨지 않고 공만 살려 시간을 끄는 정책을 학습하였음을 알 수 있다. 안정성 측면에서 Dueling은 최종 점수가 높지만 `tail_std=124`로 후반 진동이 가장 크다.
 
@@ -294,7 +348,11 @@ DQN/Double DQN/Dueling DQN의 하이퍼파라미터는 표 3에, PPO는 표 4에
 | DQN | 1.51 | 7,492 |
 | Dueling DQN | 1.53 | 7,366 |
 
-> **[그림 5 삽입 위치]** `compute_tradeoff.png` — 학습 시간(x축) 대 최종 점수(y축) 산점도. 알고리즘별 라벨 표시.
+**그림 5**
+
+*연산 비용 대비 성능 — 학습 시간(x축) 대 최종 평가 점수(y축) 산점도, 알고리즘별 라벨*
+
+![연산 비용 대비 성능](figures/notebook/compute_tradeoff.png)
 
 10M 기준 다섯 알고리즘의 벽시계 학습 시간은 약 1.5시간으로 사실상 동일하다(FPS 7.3k–7.8k). 따라서 이 환경·설정에서 알고리즘 선택의 실질적 차별화 요인은 연산 시간이 아니라 동일 시간 내 도달 점수(샘플 효율)이다.
 
@@ -313,7 +371,11 @@ DQN/Double DQN/Dueling DQN의 하이퍼파라미터는 표 3에, PPO는 표 4에
 | DQN > Double DQN | +49.1 | [43.2, 54.6] | 0.89 | ~1e-21 |
 | Dueling vs PPO | +6.9 | [−20.9, 34.9] | 0.52 | 0.55 |
 
-> **[그림 6 삽입 위치]** `significance.png` — 쌍대 유의성 히트맵. 셀 값 = P(행 알고리즘 > 열 알고리즘). 제목에 "에피소드 변동, 시드 검정 아님" 경고 포함.
+**그림 6**
+
+*쌍대 유의성 히트맵 — 셀 값 = P(행 알고리즘 > 열 알고리즘), 에피소드 변동 기준 (시드 간 비교 아님)*
+
+![유의성 히트맵](figures/notebook/significance.png)
 
 seed 7에서 A2C·PPO·DQN의 분리가 매우 뚜렷한 반면(*p* ≪ .001), Dueling과 PPO는 통계적으로 구분되지 않는다(*P* = .52, *p* = .55).
 
@@ -342,7 +404,31 @@ seed 7에서 A2C·PPO·DQN의 분리가 매우 뚜렷한 반면(*p* ≪ .001), D
 | DQN | 75.73 |
 | Double DQN | 26.64 |
 
-> **[그림 7 삽입 위치]** `violin_10m.png` — 알고리즘별 최종 평가 점수 분포 (바이올린 플롯). 분포 형태와 중앙값 비교.
+**그림 7**
+
+*10M 스텝 알고리즘별 최종 평가 점수 분포 (바이올린 플롯) — 분포 형태·중앙값·사분위수 비교*
+
+![바이올린 플롯 10M](figures/notebook/violin_10m.png)
+
+예산 규모에 따른 분포 변화는 그림 15–17에 제시한다.
+
+**그림 15**
+
+*1M 스텝 알고리즘별 최종 평가 점수 분포 — 학습 초기 단계의 분포 특성*
+
+![바이올린 플롯 1M](figures/notebook/violin_1m.png)
+
+**그림 16**
+
+*2M 스텝 알고리즘별 최종 평가 점수 분포*
+
+![바이올린 플롯 2M](figures/notebook/violin_2m.png)
+
+**그림 17**
+
+*50M 스텝 알고리즘별 최종 평가 점수 분포 — 충분한 예산에서 알고리즘 간 격차 변화*
+
+![바이올린 플롯 50M](figures/notebook/violin_50m.png)
 
 ## 6.2 결과 분석
 
@@ -360,7 +446,11 @@ seed 7에서 A2C·PPO·DQN의 분리가 매우 뚜렷한 반면(*p* ≪ .001), D
 
 모든 ablation 실험은 one-knob-at-a-time 원칙에 따라 단 하나의 하이퍼파라미터만 변경하고 나머지는 베이스라인을 유지하였다. 총 10M 스텝, seed 7로 통일하였다. 단일 시드이므로 아래 수치는 방향성 단서로 해석해야 한다 (5.3절 참조).
 
-> **[그림 8 삽입 위치]** `response_curves.png` — 하이퍼파라미터 응답 곡선 전체 스윕. 각 패널은 knob 값 대비 최종 평가 점수. 본 절 전체의 개관 그림.
+**그림 8**
+
+*하이퍼파라미터 응답 곡선 전체 스윕 — 각 패널: knob 값(x축) 대비 최종 평가 점수(y축), 베이스라인 점선 표시*
+
+![하이퍼파라미터 응답 곡선](figures/notebook/response_curves.png)
 
 ## 7.1 DQN Ablation
 

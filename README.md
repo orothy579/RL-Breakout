@@ -5,10 +5,6 @@ Train and evaluate five deep reinforcement learning algorithms on the
 theory. The goal is **rigorous experimentation, fair comparison, and
 theory-grounded analysis** — not just the single highest score.
 
-> **Full analysis:** See [`reports/apa_paper.md`](reports/apa_paper.md) for the
-> complete APA-format paper covering algorithm comparison, cross-seed analysis,
-> hyperparameter ablation, and statistical significance tests.
->
 > **Deeper data access:** Raw results, analysis logic, and all figure/table
 > generation code live in [`src/analysis.py`](src/analysis.py) and
 > [`scripts/plot_results.py`](scripts/plot_results.py) — every number in the

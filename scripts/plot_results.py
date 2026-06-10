@@ -360,14 +360,13 @@ def plot_learning_curves(runs: list[dict[str, Any]], out_path: Path) -> None:
         plt.plot(grid, mean, label=f"{label} (n={len(members)})")
         plt.fill_between(grid, mean - std, mean + std, alpha=0.15)
 
-    plt.xlabel("Environment steps")
-    plt.ylabel("Eval episode reward (mean ± std over seeds)")
-    plt.title("Breakout v5 — Learning Curves")
-    plt.legend(loc="best", fontsize=9)
-    plt.grid(True, alpha=0.3)
-    plt.tight_layout()
+    ax = plt.gca()
+    ax.set_xlabel("Environment steps")
+    ax.set_ylabel("Eval episode reward (mean ± std over seeds)")
+    ax.grid(True, alpha=0.3)
+    _legend_above(ax, "Breakout v5 — Learning Curves", fontsize=9)
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    plt.savefig(out_path, dpi=150)
+    plt.savefig(out_path, dpi=150, bbox_inches="tight")
     plt.close()
     print(f"[plot] saved {out_path}")
 
@@ -631,9 +630,8 @@ def plot_ecdf(records: list["A.RunRecord"], out_path: Path) -> None:
         return
     ax.set_xlabel("Episode reward")
     ax.set_ylabel("Empirical CDF  P(reward ≤ x)")
-    ax.set_title("Final-eval return ECDF")
-    ax.legend(fontsize=7, loc="lower right")
     ax.grid(True, alpha=0.3)
+    _legend_above(ax, "Final-eval return ECDF", fontsize=7)
     _save(fig, out_path)
 
 
@@ -680,8 +678,8 @@ def plot_compute_tradeoff(records: list["A.RunRecord"], out_path: Path) -> None:
     Surfaces the off-policy(DQN) vs on-policy(PPO/A2C) cost trade-off: who gets
     the most reward per training hour at a given budget.
     """
-    fig, ax = plt.subplots(figsize=(8, 6))
-    plotted = 0
+    fig, ax = plt.subplots(figsize=(9, 6))
+    label_items: list[tuple[float, float, str]] = []
     for r in _sorted_recs(records):
         comp = A.compute_stats(r)
         perf = A.final_performance(r).get("mean", float("nan"))
@@ -689,11 +687,9 @@ def plot_compute_tradeoff(records: list["A.RunRecord"], out_path: Path) -> None:
             continue
         ax.scatter(comp["wall_clock_hours"], perf, s=80, color=_algo_color(r.label),
                    edgecolors="k", linewidths=0.5, zorder=3)
-        ax.annotate(f"{r.label}\n{A.format_timesteps(r.budget)} s{r.seed}",
-                    (comp["wall_clock_hours"], perf), fontsize=6.5,
-                    xytext=(4, 4), textcoords="offset points")
-        plotted += 1
-    if plotted == 0:
+        label_items.append((comp["wall_clock_hours"], perf,
+                            f"{r.label} {A.format_timesteps(r.budget)} s{r.seed}"))
+    if not label_items:
         print("[plot] no monitor logs for compute trade-off")
         plt.close(fig)
         return
@@ -701,6 +697,11 @@ def plot_compute_tradeoff(records: list["A.RunRecord"], out_path: Path) -> None:
     ax.set_ylabel("Final-eval mean reward")
     ax.set_title("Compute vs performance")
     ax.grid(True, alpha=0.3)
+    # Small right margin so the rightmost point isn't flush against the frame;
+    # _spread_labels then stacks the callouts just outside the right edge.
+    x0, x1 = ax.get_xlim()
+    ax.set_xlim(x0, x1 + (x1 - x0) * 0.05)
+    _spread_labels(ax, label_items)
     _save(fig, out_path)
 
 
@@ -736,11 +737,8 @@ def plot_seed_aggregate(
     ax.set_xticklabels([f"{r['label']}\n{r['budget_str']} (n={r['n_seeds']})"
                         for _, r in agg.iterrows()], fontsize=7)
     ax.set_ylabel(f"{metric} (bar=mean±95%CI, ◆=IQM, dots=seeds)")
-    ax.set_title("Cross-seed aggregate per config")
     ax.grid(True, axis="y", alpha=0.3)
-    handles, labels_ = ax.get_legend_handles_labels()
-    if handles:
-        ax.legend(handles, labels_, fontsize=8)
+    _legend_above(ax, "Cross-seed aggregate per config", fontsize=8)
     _save(fig, out_path)
 
 
@@ -774,7 +772,10 @@ def plot_response_curves(records: list["A.RunRecord"], out_path: Path) -> None:
         ax.grid(True, alpha=0.3)
     for ax in axes.ravel()[len(found):]:
         ax.set_visible(False)
-    fig.suptitle("Hyperparameter response curves", y=1.0)
+    # Reserve the top strip for the suptitle and pad rows so a lower panel's title
+    # never collides with the x-label of the panel above it.
+    fig.tight_layout(rect=(0, 0, 1, 0.96), h_pad=2.5, w_pad=2.0)
+    fig.suptitle("Hyperparameter response curves", y=0.99)
     _save(fig, out_path)
 
 
@@ -822,6 +823,63 @@ def plot_significance_heatmap(records: list["A.RunRecord"], out_path: Path) -> N
     fig.colorbar(im, ax=ax, label="P(row > col) per episode")
     ax.set_title(f"Eval-level dominance @ {A.format_timesteps(int(budget))}\n(episode variance, NOT seed variance)")
     _save(fig, out_path)
+
+
+def _legend_above(ax, title: str, *, fontsize: int = 8, max_ncol: int = 4,
+                  title_fontsize: int | None = None) -> None:
+    """Put the legend in the strip *between* the title and the axes.
+
+    Placing it outside (above) the data area guarantees it never covers a curve;
+    ``bbox_inches="tight"`` in :func:`_save` then grows the canvas to fit. The
+    title is pushed above the legend via a row-count-aware ``pad``.
+    """
+    handles, labels = ax.get_legend_handles_labels()
+    if not handles:
+        ax.set_title(title, fontsize=title_fontsize)
+        return
+    ncol = min(max_ncol, len(handles))
+    leg = ax.legend(
+        handles, labels, loc="lower center", bbox_to_anchor=(0.5, 1.0),
+        ncol=ncol, fontsize=fontsize, frameon=False,
+        columnspacing=1.2, handletextpad=0.5, borderaxespad=0.3,
+    )
+    # Measure the rendered legend and seat the title just above it, so a tall
+    # multi-row legend can never land on top of the title text.
+    fig = ax.figure
+    fig.canvas.draw()
+    leg_top = leg.get_window_extent().transformed(ax.transAxes.inverted()).y1
+    ax.set_title(title, y=leg_top + 0.02, fontsize=title_fontsize)
+
+
+def _spread_labels(ax, items, *, fontsize: float = 6.5) -> None:
+    """Annotate scatter points with the labels stacked in a tidy right-hand column.
+
+    ``items`` is a list of ``(x, y, text)`` in data coords. The labels are sorted
+    by y and assigned evenly-spaced slots across the axes height, then drawn just
+    outside the right edge with a thin leader line back to each point. Because the
+    slots are bounded and evenly spaced, text never overlaps itself and never spills
+    up into the title — which the previous greedy "push up on collision" did when
+    many points clustered in a narrow band.
+    """
+    if not items:
+        return
+    items = sorted(items, key=lambda t: t[1])
+    y0, y1 = ax.get_ylim()
+    x0, x1 = ax.get_xlim()
+    n = len(items)
+    pad = (y1 - y0) * 0.02
+    if n == 1:
+        slots = [items[0][1]]
+    else:
+        slots = [y0 + pad + (y1 - y0 - 2 * pad) * i / (n - 1) for i in range(n)]
+    lx = x1 + (x1 - x0) * 0.02  # label column just past the data area
+    for (x, y, text), ly in zip(items, slots):
+        ax.annotate(
+            text, xy=(x, y), xytext=(lx, ly), textcoords="data",
+            fontsize=fontsize, va="center", ha="left", annotation_clip=False,
+            arrowprops=dict(arrowstyle="-", lw=0.4, color="#bbbbbb",
+                            shrinkA=0, shrinkB=2),
+        )
 
 
 def _save(fig, out_path: Path) -> None:
